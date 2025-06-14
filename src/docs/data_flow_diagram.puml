@@ -1,0 +1,34 @@
+@startuml
+!define RECTANGLE class
+' Добавляем директиву allowmixing для смешивания типов элементов
+allowmixing
+
+' Внешние сущности
+RECTANGLE "Пациент" as patient
+RECTANGLE "Врач" as doctor
+RECTANGLE "Администратор" as admin
+
+' Процессы системы
+package "Система медкарт" {
+    RECTANGLE "Регистрация пациента" as reg
+    RECTANGLE "Запись на прием" as appointment
+    RECTANGLE "Ведение истории" as history
+    RECTANGLE "Поиск данных" as search
+    RECTANGLE "Резервное копирование" as backup
+}
+
+' База данных
+database "PostgreSQL" as db
+
+' Потоки данных
+patient --> reg : Личные данные
+patient --> appointment : Запрос на прием
+doctor --> history : Диагноз, назначения
+doctor --> search : Запрос данных
+admin --> backup : Команда backup
+reg --> db : Сохранение
+appointment --> db : Сохранение
+history --> db : Сохранение (шифрованное)
+search --> db : Запрос
+backup --> db : Dump
+@enduml
