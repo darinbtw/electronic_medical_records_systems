@@ -1,34 +1,58 @@
 @startuml
 !define RECTANGLE class
-' Добавляем директиву allowmixing для смешивания типов элементов
 allowmixing
 
 ' Внешние сущности
-RECTANGLE "Пациент" as patient
-RECTANGLE "Врач" as doctor
-RECTANGLE "Администратор" as admin
+RECTANGLE "Пациент" as patient #LightBlue
+RECTANGLE "Врач" as doctor #LightGreen
+RECTANGLE "Главврач/\nАдминистратор" as chief_admin #Orange
+RECTANGLE "Системный\nадминистратор" as sys_admin #LightGray
 
 ' Процессы системы
 package "Система медкарт" {
-    RECTANGLE "Регистрация пациента" as reg
-    RECTANGLE "Запись на прием" as appointment
-    RECTANGLE "Ведение истории" as history
-    RECTANGLE "Поиск данных" as search
-    RECTANGLE "Резервное копирование" as backup
+    RECTANGLE "Регистрация\nпациента" as reg
+    RECTANGLE "Запись\nна прием" as appointment
+    RECTANGLE "Просмотр\nистории болезни" as view_history
+    RECTANGLE "Ведение\nприема" as consultation
+    RECTANGLE "Постановка\nдиагноза" as diagnosis
+    RECTANGLE "Поиск\nданных" as search
+    RECTANGLE "Просмотр\nвсех данных" as view_all
+    RECTANGLE "Резервное\nкопирование" as backup
 }
 
 ' База данных
 database "PostgreSQL" as db
 
-' Потоки данных
-patient --> reg : Личные данные
-patient --> appointment : Запрос на прием
-doctor --> history : Диагноз, назначения
-doctor --> search : Запрос данных
-admin --> backup : Команда backup
-reg --> db : Сохранение
-appointment --> db : Сохранение
-history --> db : Сохранение (шифрованное)
-search --> db : Запрос
-backup --> db : Dump
+' Потоки данных от пациента
+patient --> reg : "Личные данные"
+patient --> appointment : "Запрос на прием"
+
+' Потоки данных от врача
+doctor --> view_history : "Запрос карты\nпациента"
+doctor --> consultation : "Жалобы,\nосмотр"
+doctor --> diagnosis : "Диагноз,\nназначения"
+doctor --> search : "Поиск пациента"
+
+' Потоки данных от главврача/администратора
+chief_admin --> view_all : "Просмотр всех\nпациентов"
+chief_admin --> search : "Статистика,\nотчеты"
+
+' Потоки данных от системного администратора
+sys_admin --> backup : "Команда backup"
+sys_admin --> db : "Обслуживание БД"
+
+' Взаимодействие с БД
+reg --> db : "INSERT patients"
+appointment --> db : "INSERT appointments"
+db --> view_history : "SELECT история"
+consultation --> db : "UPDATE appointments"
+diagnosis --> db : "INSERT medical_records\n(шифрованное)"
+db --> search : "SELECT запросы"
+db --> view_all : "SELECT * (все данные)"
+backup --> db : "pg_dump"
+
+' Связи между процессами
+view_history --> consultation : "Данные для\nанализа"
+consultation --> diagnosis : "Результаты\nосмотра"
+
 @enduml
