@@ -1,4 +1,3 @@
-# src/database/connection.py
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
