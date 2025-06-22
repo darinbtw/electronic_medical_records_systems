@@ -16,17 +16,16 @@ class AESEncryption:
         key_file = os.getenv('ENCRYPTION_KEY_FILE', '.encryption_key')
         
         if os.path.exists(key_file):
+            # Загружаем существующий ключ
             with open(key_file, 'rb') as f:
                 key = f.read()
-                self.logger.info("Encryption key loaded")
                 return key
         else:
-            # Генерация нового ключа 256-bit
-            key = os.urandom(32)
+            # Создаем новый ключ
+            key = os.urandom(32)  # 32 байта = 256 бит
             with open(key_file, 'wb') as f:
                 f.write(key)
-            os.chmod(key_file, 0o600)  # Только владелец может читать
-            self.logger.info("New encryption key generated")
+            os.chmod(key_file, 0o600)  # Права доступа только для владельца
             return key
     
     def encrypt(self, plaintext: str) -> Tuple[bytes, bytes]:
