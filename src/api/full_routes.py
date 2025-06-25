@@ -2,6 +2,14 @@ from flask import Flask, request, jsonify
 from datetime import datetime
 import jwt
 from functools import wraps
+import os
+import sys
+
+# Добавляем путь к корню проекта
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+sys.path.insert(0, project_root)
+
 from src.database.connection import db
 from src.security.encryption import AESEncryption
 from src.api.validators import Validators
@@ -10,6 +18,136 @@ from src.config import config
 app = Flask(__name__)
 app.config['SECRET_KEY'] = config.SECRET_KEY
 encryption = AESEncryption()
+
+# Включаем CORS для работы с web_interface.html
+from flask_cors import CORS
+CORS(app)
+
+# === ГЛАВНАЯ СТРАНИЦА И HEALTH CHECK ===
+
+@app.route('/')
+def index():
+    """Главная страница API"""
+    return jsonify({
+        'message': '🏥 Система электронных медкарт API',
+        'version': '1.0.0',
+        'status': 'running',
+        'endpoints': {
+            'GET /': 'Эта страница',
+            'GET /health': 'Проверка состояния системы',
+            'GET /api/patients': 'Список всех пациентов',
+            'GET /api/patients/<id>': 'Информация о пациенте',
+            'GET /api/search?q=<query>': 'Поиск пациентов',
+            'POST /api/patients': 'Создать пациента',
+            'POST /api/appointments': 'Создать прием',
+            'POST /api/medical-records': 'Создать медзапись',
+            'GET /api/statistics': 'Статистика системы',
+            'POST /api/validate': 'Валидация данных'
+        },
+        'documentation': 'Используйте web_interface.html для графического интерфейса'
+    })
+
+@app.route('/health')
+def health():
+    """Проверка состояния системы"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) as patients FROM patients")
+            patients_count = cursor.fetchone()['patients']
+            
+            cursor.execute("SELECT COUNT(*) as doctors FROM doctors")
+            doctors_count = cursor.fetchone()['doctors']
+            
+            db_status = "OK"
+            details = {
+                'patients_count': patients_count,
+                'doctors_count': doctors_count
+            }
+    except Exception as e:
+        db_status = "ERROR"
+        details = {'error': str(e)}
+    
+    return jsonify({
+        'status': 'OK' if db_status == "OK" else 'ERROR',
+        'database': db_status,
+        'timestamp': datetime.now().isoformat(),
+        'details': details
+    })
+
+# === ПОИСК ===
+
+@app.route('/api/search')
+def search():
+    """Универсальный поиск"""
+    query = request.args.get('q', '').strip()
+    search_type = request.args.get('type', 'patients')
+    
+    if search_type == 'doctors':
+        # Поиск врачей
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name, 
+                           specialization, phone, email
+                    FROM doctors
+                    ORDER BY last_name, first_name
+                """)
+                doctors = cursor.fetchall()
+                return jsonify({'doctors': doctors})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    
+    # Поиск пациентов по умолчанию
+    if len(query) < 2:
+        return jsonify({'error': 'Query too short', 'patients': []}), 200
+    
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT id, first_name, last_name, middle_name, 
+                       birth_date, gender, phone, email
+                FROM patients
+                WHERE last_name ILIKE %s 
+                   OR first_name ILIKE %s 
+                   OR middle_name ILIKE %s
+                   OR phone LIKE %s
+                ORDER BY last_name, first_name
+                LIMIT 50
+            """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'))
+            
+            patients = cursor.fetchall()
+            
+        return jsonify({
+            'patients': patients,
+            'count': len(patients),
+            'query': query
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# === ВАЛИДАЦИЯ ===
+
+@app.route('/api/validate', methods=['POST'])
+def validate():
+    """Валидация данных"""
+    data = request.get_json()
+    
+    results = {}
+    
+    if 'email' in data:
+        results['email'] = {
+            'value': data['email'],
+            'valid': Validators.validate_email(data['email'])
+        }
+    
+    if 'phone' in data:
+        results['phone'] = {
+            'value': data['phone'],
+            'valid': Validators.validate_phone(data['phone'])
+        }
+    
+    return jsonify(results)
 
 # === ПАЦИЕНТЫ ===
 

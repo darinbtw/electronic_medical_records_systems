@@ -80,9 +80,10 @@ def main():
     print("\nНажмите Ctrl+C для остановки\n")
     
     try:
+        # Используем порт 8000 как в main.py
         app.run(
             host=config.API_HOST,
-            port=config.API_PORT,
+            port=8000,  # Изменено на 8000
             debug=config.API_DEBUG
         )
     except KeyboardInterrupt:
