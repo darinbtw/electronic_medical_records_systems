@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Система электронных медкарт</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #f5f5f5; 
+            padding: 20px;
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { 
+            color: #2c3e50; 
+            margin-bottom: 30px; 
+            text-align: center;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 30px;
+        }
+        .tab {
+            padding: 15px 30px;
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-size: 16px;
+            color: #666;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+        }
+        .tab:hover {
+            background: #f8f8f8;
+        }
+        .section {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+        .section.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .card h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        .btn-secondary {
+            background: #95a5a6;
+        }
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        .results {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .patient-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .patient-item:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-card h4 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+        }
+        .message {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏥 Система электронных медицинских карт</h1>
+        
+        <div id="message" class="message"></div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showSection('dashboard')">Главная</button>
+            <button class="tab" onclick="showSection('patients')">Пациенты</button>
+            <button class="tab" onclick="showSection('appointments')">Приемы</button>
+            <button class="tab" onclick="showSection('records')">Медкарты</button>
+            <button class="tab" onclick="showSection('statistics')">Статистика</button>
+        </div>
+        
+        <!-- Главная страница -->
+        <div id="dashboard" class="section active">
+            <h2>Добро пожаловать в систему</h2>
+            <div class="stats-grid" id="stats-grid">
+                <!-- Статистика загружается динамически -->
+            </div>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>Быстрый поиск пациента</h3>
+                    <form onsubmit="searchPatients(event)">
+                        <div class="form-group">
+                            <input type="text" id="quick-search" placeholder="Введите ФИО..." required>
+                        </div>
+                        <button type="submit">Найти</button>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h3>Системная информация</h3>
+                    <p><strong>Версия:</strong> 1.0.0</p>
+                    <p><strong>База данных:</strong> PostgreSQL</p>
+                    <p><strong>Шифрование:</strong> AES-256</p>
+                    <p><strong>API:</strong> <a href="http://localhost:8000" target="_blank">http://localhost:8000</a></p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Пациенты -->
+        <div id="patients" class="section">
+            <h2>Управление пациентами</h2>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>Добавить пациента</h3>
+                    <form id="patient-form" onsubmit="createPatient(event)">
+                        <div class="form-group">
+                            <label>Фамилия*</label>
+                            <input type="text" name="last_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Имя*</label>
+                            <input type="text" name="first_name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Отчество</label>
+                            <input type="text" name="middle_name">
+                        </div>
+                        <div class="form-group">
+                            <label>Дата рождения*</label>
+                            <input type="date" name="birth_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Пол*</label>
+                            <select name="gender" required>
+                                <option value="">Выберите...</option>
+                                <option value="M">Мужской</option>
+                                <option value="F">Женский</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Телефон</label>
+                            <input type="tel" name="phone">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" name="email">
+                        </div>
+                        <div class="form-group">
+                            <label>Адрес</label>
+                            <textarea name="address"></textarea>
+                        </div>
+                        <button type="submit">Добавить пациента</button>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h3>Поиск пациентов</h3>
+                    <form onsubmit="searchPatients(event)">
+                        <div class="form-group">
+                            <input type="text" id="search-query" placeholder="Введите ФИО для поиска..." required>
+                        </div>
+                        <button type="submit">Искать</button>
+                    </form>
+                    <div id="search-results" class="results"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Все пациенты</h3>
+                <button onclick="loadPatients()">Загрузить список</button>
+                <div id="patients-list"></div>
+            </div>
+        </div>
+        
+        <!-- Приемы -->
+        <div id="appointments" class="section">
+            <h2>Управление приемами</h2>
+            
+            <div class="grid">
+                <div class="card">
+                    <h3>Запланировать прием</h3>
+                    <form id="appointment-form" onsubmit="createAppointment(event)">
+                        <div class="form-group">
+                            <label>Пациент*</label>
+                            <select name="patient_id" id="patient-select" required>
+                                <option value="">Выберите пациента...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Врач*</label>
+                            <select name="doctor_id" id="doctor-select" required>
+                                <option value="">Выберите врача...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Дата и время*</label>
+                            <input type="datetime-local" name="appointment_date" required>
+                        </div>
+                        <button type="submit">Создать прием</button>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h3>Расписание приемов</h3>
+                    <button onclick="loadAppointments()">Загрузить расписание</button>
+                    <div id="appointments-list"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Медкарты -->
+        <div id="records" class="section">
+            <h2>Медицинские записи</h2>
+            
+            <div class="card">
+                <h3>Создать медицинскую запись</h3>
+                <form id="record-form" onsubmit="createMedicalRecord(event)">
+                    <div class="form-group">
+                        <label>Прием*</label>
+                        <select name="appointment_id" id="appointment-select" required>
+                            <option value="">Выберите прием...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Жалобы</label>
+                        <textarea name="complaints"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Результаты осмотра</label>
+                        <textarea name="examination_results"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Диагноз* (будет зашифрован)</label>
+                        <textarea name="diagnosis" required></textarea>
+                    </div>
+                    
+                    <h4>Назначения:</h4>
+                    <div id="prescriptions">
+                        <div class="prescription-item">
+                            <input type="text" placeholder="Препарат" name="medication_name_0">
+                            <input type="text" placeholder="Дозировка" name="dosage_0">
+                            <input type="text" placeholder="Частота" name="frequency_0">
+                            <input type="text" placeholder="Длительность" name="duration_0">
+                        </div>
+                    </div>
+                    <button type="button" onclick="addPrescription()" class="btn-secondary">+ Добавить назначение</button>
+                    <br><br>
+                    <button type="submit">Создать запись</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Статистика -->
+        <div id="statistics" class="section">
+            <h2>Статистика системы</h2>
+            <button onclick="loadStatistics()">Обновить статистику</button>
+            <div id="statistics-content"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        // Переключение вкладок
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            
+            document.getElementById(sectionId).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Загружаем данные при переключении
+            if (sectionId === 'dashboard') loadDashboard();
+            if (sectionId === 'patients') loadSelects();
+            if (sectionId === 'appointments') loadSelects();
+        }
+        
+        // Показ сообщений
+       function showMessage(text, type = 'success') {
+           const messageEl = document.getElementById('message');
+           messageEl.textContent = text;
+           messageEl.className = `message ${type}`;
+           messageEl.style.display = 'block';
+           setTimeout(() => {
+               messageEl.style.display = 'none';
+           }, 5000);
+       }
+       
+       // Загрузка главной страницы
+       async function loadDashboard() {
+           try {
+               const response = await fetch(`${API_URL}/api/statistics`);
+               const stats = await response.json();
+               
+               const statsGrid = document.getElementById('stats-grid');
+               statsGrid.innerHTML = `
+                   <div class="stat-card">
+                       <h4>Пациентов</h4>
+                       <div class="number">${stats.general.total_patients}</div>
+                   </div>
+                   <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                       <h4>Врачей</h4>
+                       <div class="number">${stats.general.total_doctors}</div>
+                   </div>
+                   <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                       <h4>Приемов</h4>
+                       <div class="number">${stats.general.total_appointments}</div>
+                   </div>
+                   <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                       <h4>Медкарт</h4>
+                       <div class="number">${stats.general.total_records}</div>
+                   </div>
+               `;
+           } catch (error) {
+               console.error('Error loading dashboard:', error);
+           }
+       }
+       
+       // Поиск пациентов
+       async function searchPatients(event) {
+           event.preventDefault();
+           const query = document.getElementById('search-query')?.value || document.getElementById('quick-search')?.value;
+           
+           try {
+               const response = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(query)}`);
+               const data = await response.json();
+               
+               const resultsEl = document.getElementById('search-results');
+               if (resultsEl) {
+                   resultsEl.innerHTML = '<h4>Результаты поиска:</h4>';
+                   
+                   if (data.patients && data.patients.length > 0) {
+                       data.patients.forEach(patient => {
+                           resultsEl.innerHTML += `
+                               <div class="patient-item" onclick="viewPatient(${patient.id})">
+                                   <strong>${patient.last_name} ${patient.first_name} ${patient.middle_name || ''}</strong><br>
+                                   Дата рождения: ${patient.birth_date}<br>
+                                   Телефон: ${patient.phone || 'не указан'}
+                               </div>
+                           `;
+                       });
+                   } else {
+                       resultsEl.innerHTML += '<p>Пациенты не найдены</p>';
+                   }
+               }
+           } catch (error) {
+               showMessage('Ошибка поиска: ' + error.message, 'error');
+           }
+       }
+       
+       // Создание пациента
+       async function createPatient(event) {
+           event.preventDefault();
+           const formData = new FormData(event.target);
+           const data = Object.fromEntries(formData);
+           
+           try {
+               const response = await fetch(`${API_URL}/api/patients`, {
+                   method: 'POST',
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify(data)
+               });
+               
+               if (response.ok) {
+                   showMessage('Пациент успешно добавлен');
+                   event.target.reset();
+                   loadPatients();
+               } else {
+                   const error = await response.json();
+                   showMessage('Ошибка: ' + error.error, 'error');
+               }
+           } catch (error) {
+               showMessage('Ошибка: ' + error.message, 'error');
+           }
+       }
+       
+       // Загрузка списка пациентов
+       async function loadPatients() {
+           try {
+               const response = await fetch(`${API_URL}/api/patients`);
+               const data = await response.json();
+               
+               const listEl = document.getElementById('patients-list');
+               listEl.innerHTML = '<table><thead><tr><th>ID</th><th>ФИО</th><th>Дата рождения</th><th>Телефон</th><th>Email</th></tr></thead><tbody>';
+               
+               data.patients.forEach(patient => {
+                   listEl.innerHTML += `
+                       <tr onclick="viewPatient(${patient.id})" style="cursor: pointer;">
+                           <td>${patient.id}</td>
+                           <td>${patient.last_name} ${patient.first_name} ${patient.middle_name || ''}</td>
+                           <td>${patient.birth_date}</td>
+                           <td>${patient.phone || '-'}</td>
+                           <td>${patient.email || '-'}</td>
+                       </tr>
+                   `;
+               });
+               
+               listEl.innerHTML += '</tbody></table>';
+           } catch (error) {
+               showMessage('Ошибка загрузки: ' + error.message, 'error');
+           }
+       }
+       
+       // Просмотр пациента
+       async function viewPatient(patientId) {
+           try {
+               const response = await fetch(`${API_URL}/api/patients/${patientId}`);
+               const patient = await response.json();
+               
+               alert(`Пациент: ${patient.last_name} ${patient.first_name}
+Дата рождения: ${patient.birth_date}
+Всего приемов: ${patient.total_appointments}
+Последний прием: ${patient.last_appointment || 'нет'}`);
+           } catch (error) {
+               showMessage('Ошибка: ' + error.message, 'error');
+           }
+       }
+       
+       // Загрузка селектов
+       async function loadSelects() {
+           try {
+               // Загружаем пациентов
+               const patientsResponse = await fetch(`${API_URL}/api/patients`);
+               const patientsData = await patientsResponse.json();
+               
+               const patientSelect = document.getElementById('patient-select');
+               if (patientSelect) {
+                   patientSelect.innerHTML = '<option value="">Выберите пациента...</option>';
+                   patientsData.patients.forEach(patient => {
+                       patientSelect.innerHTML += `<option value="${patient.id}">${patient.last_name} ${patient.first_name}</option>`;
+                   });
+               }
+               
+               // Загружаем врачей
+               const doctorsResponse = await fetch(`${API_URL}/api/search?type=doctors`);
+               const doctorsData = await doctorsResponse.json();
+               
+               const doctorSelect = document.getElementById('doctor-select');
+               if (doctorSelect && doctorsData.doctors) {
+                   doctorSelect.innerHTML = '<option value="">Выберите врача...</option>';
+                   doctorsData.doctors.forEach(doctor => {
+                       doctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.last_name} ${doctor.first_name} - ${doctor.specialization}</option>`;
+                   });
+               }
+               
+               // Загружаем приемы для медкарт
+               const appointmentsResponse = await fetch(`${API_URL}/api/appointments`);
+               const appointmentsData = await appointmentsResponse.json();
+               
+               const appointmentSelect = document.getElementById('appointment-select');
+               if (appointmentSelect) {
+                   appointmentSelect.innerHTML = '<option value="">Выберите прием...</option>';
+                   appointmentsData.appointments
+                       .filter(a => a.status === 'scheduled')
+                       .forEach(appointment => {
+                           appointmentSelect.innerHTML += `<option value="${appointment.id}">${appointment.appointment_date} - ${appointment.patient_name} / ${appointment.doctor_name}</option>`;
+                       });
+               }
+           } catch (error) {
+               console.error('Error loading selects:', error);
+           }
+       }
+       
+       // Создание приема
+       async function createAppointment(event) {
+           event.preventDefault();
+           const formData = new FormData(event.target);
+           const data = Object.fromEntries(formData);
+           
+           try {
+               const response = await fetch(`${API_URL}/api/appointments`, {
+                   method: 'POST',
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify(data)
+               });
+               
+               if (response.ok) {
+                   showMessage('Прием успешно создан');
+                   event.target.reset();
+                   loadAppointments();
+               } else {
+                   const error = await response.json();
+                   showMessage('Ошибка: ' + error.error, 'error');
+               }
+           } catch (error) {
+               showMessage('Ошибка: ' + error.message, 'error');
+           }
+       }
+       
+       // Загрузка приемов
+       async function loadAppointments() {
+           try {
+               const response = await fetch(`${API_URL}/api/appointments`);
+               const data = await response.json();
+               
+               const listEl = document.getElementById('appointments-list');
+               listEl.innerHTML = '<table><thead><tr><th>Дата/Время</th><th>Пациент</th><th>Врач</th><th>Статус</th></tr></thead><tbody>';
+               
+               data.appointments.forEach(appointment => {
+                   const statusColor = appointment.status === 'completed' ? 'green' : 
+                                     appointment.status === 'scheduled' ? 'orange' : 'red';
+                   
+                   listEl.innerHTML += `
+                       <tr>
+                           <td>${new Date(appointment.appointment_date).toLocaleString('ru-RU')}</td>
+                           <td>${appointment.patient_name}</td>
+                           <td>${appointment.doctor_name} (${appointment.specialization})</td>
+                           <td style="color: ${statusColor};">${appointment.status}</td>
+                       </tr>
+                   `;
+               });
+               
+               listEl.innerHTML += '</tbody></table>';
+           } catch (error) {
+               showMessage('Ошибка загрузки: ' + error.message, 'error');
+           }
+       }
+       
+       // Создание медицинской записи
+       let prescriptionCount = 1;
+       
+       function addPrescription() {
+           const prescriptionsDiv = document.getElementById('prescriptions');
+           prescriptionsDiv.innerHTML += `
+               <div class="prescription-item">
+                   <input type="text" placeholder="Препарат" name="medication_name_${prescriptionCount}">
+                   <input type="text" placeholder="Дозировка" name="dosage_${prescriptionCount}">
+                   <input type="text" placeholder="Частота" name="frequency_${prescriptionCount}">
+                   <input type="text" placeholder="Длительность" name="duration_${prescriptionCount}">
+               </div>
+           `;
+           prescriptionCount++;
+       }
+       
+       async function createMedicalRecord(event) {
+           event.preventDefault();
+           const formData = new FormData(event.target);
+           
+           const data = {
+               appointment_id: formData.get('appointment_id'),
+               complaints: formData.get('complaints'),
+               examination_results: formData.get('examination_results'),
+               diagnosis: formData.get('diagnosis'),
+               prescriptions: []
+           };
+           
+           // Собираем назначения
+           for (let i = 0; i < prescriptionCount; i++) {
+               const medication = formData.get(`medication_name_${i}`);
+               if (medication) {
+                   data.prescriptions.push({
+                       medication_name: medication,
+                       dosage: formData.get(`dosage_${i}`),
+                       frequency: formData.get(`frequency_${i}`),
+                       duration: formData.get(`duration_${i}`)
+                   });
+               }
+           }
+           
+           try {
+               const response = await fetch(`${API_URL}/api/medical-records`, {
+                   method: 'POST',
+                   headers: {
+                       'Content-Type': 'application/json'
+                   },
+                   body: JSON.stringify(data)
+               });
+               
+               if (response.ok) {
+                   showMessage('Медицинская запись успешно создана');
+                   event.target.reset();
+                   loadSelects();
+               } else {
+                   const error = await response.json();
+                   showMessage('Ошибка: ' + error.error, 'error');
+               }
+           } catch (error) {
+               showMessage('Ошибка: ' + error.message, 'error');
+           }
+       }
+       
+       // Загрузка статистики
+       async function loadStatistics() {
+           try {
+               const response = await fetch(`${API_URL}/api/statistics`);
+               const stats = await response.json();
+               
+               const contentEl = document.getElementById('statistics-content');
+               contentEl.innerHTML = `
+                   <div class="stats-grid">
+                       <div class="stat-card">
+                           <h4>Всего пациентов</h4>
+                           <div class="number">${stats.general.total_patients}</div>
+                       </div>
+                       <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                           <h4>Всего врачей</h4>
+                           <div class="number">${stats.general.total_doctors}</div>
+                       </div>
+                       <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                           <h4>Всего приемов</h4>
+                           <div class="number">${stats.general.total_appointments}</div>
+                       </div>
+                       <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                           <h4>Запланировано</h4>
+                           <div class="number">${stats.general.scheduled_appointments}</div>
+                       </div>
+                   </div>
+                   
+                   <h3>Статистика по врачам</h3>
+                   <table>
+                       <thead>
+                           <tr>
+                               <th>Врач</th>
+                               <th>Специализация</th>
+                               <th>Количество приемов</th>
+                           </tr>
+                       </thead>
+                       <tbody>
+                           ${stats.doctors.map(doctor => `
+                               <tr>
+                                   <td>${doctor.last_name} ${doctor.first_name}</td>
+                                   <td>${doctor.specialization}</td>
+                                   <td>${doctor.appointment_count}</td>
+                               </tr>
+                           `).join('')}
+                       </tbody>
+                   </table>
+               `;
+           } catch (error) {
+               showMessage('Ошибка загрузки статистики: ' + error.message, 'error');
+           }
+       }
+       
+       // Загружаем данные при старте
+       loadDashboard();
+   </script>
+</body>
+</html>
