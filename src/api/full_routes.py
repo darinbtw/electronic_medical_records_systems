@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from datetime import datetime
 import jwt
 from functools import wraps
@@ -27,13 +27,29 @@ CORS(app)
 
 @app.route('/')
 def index():
-    """Главная страница API"""
+    """Главная страница - возвращает веб-интерфейс"""
+    # Путь к web_interface.html
+    web_interface_path = os.path.join(project_root, 'web_interface.html')
+    if os.path.exists(web_interface_path):
+        return send_file(web_interface_path)
+    else:
+        # Если файл не найден, возвращаем JSON
+        return jsonify({
+            'message': '🏥 Система электронных медкарт API',
+            'error': 'web_interface.html не найден',
+            'path': web_interface_path
+        })
+
+@app.route('/api')
+def api_info():
+    """Информация об API"""
     return jsonify({
         'message': '🏥 Система электронных медкарт API',
         'version': '1.0.0',
         'status': 'running',
         'endpoints': {
-            'GET /': 'Эта страница',
+            'GET /': 'Веб-интерфейс',
+            'GET /api': 'Эта страница',
             'GET /health': 'Проверка состояния системы',
             'GET /api/patients': 'Список всех пациентов',
             'GET /api/patients/<id>': 'Информация о пациенте',
@@ -43,8 +59,7 @@ def index():
             'POST /api/medical-records': 'Создать медзапись',
             'GET /api/statistics': 'Статистика системы',
             'POST /api/validate': 'Валидация данных'
-        },
-        'documentation': 'Используйте web_interface.html для графического интерфейса'
+        }
     })
 
 @app.route('/health')
