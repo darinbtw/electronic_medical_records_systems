@@ -1,0 +1,67 @@
+plantuml
+@startuml
+!define table(x) entity x << (T,#FFAAAA) >>
+!define primary_key(x) <b>x</b>
+!define foreign_key(x) <i>x</i>
+
+table(patients) {
+  primary_key(id): INTEGER
+  first_name: VARCHAR(100)
+  last_name: VARCHAR(100)
+  middle_name: VARCHAR(100)
+  birth_date: DATE
+  gender: CHAR(1)
+  phone: VARCHAR(20)
+  email: VARCHAR(100)
+  address: TEXT
+  created_at: TIMESTAMP
+  updated_at: TIMESTAMP
+}
+
+table(doctors) {
+  primary_key(id): INTEGER
+  first_name: VARCHAR(100)
+  last_name: VARCHAR(100)
+  middle_name: VARCHAR(100)
+  specialization: VARCHAR(200)
+  license_number: VARCHAR(50)
+  phone: VARCHAR(20)
+  email: VARCHAR(100)
+  created_at: TIMESTAMP
+}
+
+table(appointments) {
+  primary_key(id): INTEGER
+  foreign_key(patient_id): INTEGER
+  foreign_key(doctor_id): INTEGER
+  appointment_date: TIMESTAMP
+  status: VARCHAR(20)
+  created_at: TIMESTAMP
+}
+
+table(medical_records) {
+  primary_key(id): INTEGER
+  foreign_key(appointment_id): INTEGER
+  diagnosis_encrypted: BYTEA
+  diagnosis_iv: BYTEA
+  complaints: TEXT
+  examination_results: TEXT
+  created_at: TIMESTAMP
+}
+
+table(prescriptions) {
+  primary_key(id): INTEGER
+  foreign_key(medical_record_id): INTEGER
+  medication_name: VARCHAR(200)
+  dosage: VARCHAR(100)
+  frequency: VARCHAR(100)
+  duration: VARCHAR(100)
+  notes: TEXT
+}
+
+patients ||--o{ appointments
+doctors ||--o{ appointments
+appointments ||--|| medical_records
+medical_records ||--o{ prescriptions
+
+@enduml
