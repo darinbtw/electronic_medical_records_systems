@@ -102,11 +102,11 @@ def main():
         
         # Параметры подключения
         conn_params = {
-            'host': os.getenv('DB_HOST', 'localhost'),
-            'port': int(os.getenv('DB_PORT', 5432)),
-            'database': os.getenv('DB_NAME', 'postgres'),
-            'user': os.getenv('DB_USER', 'postgres'),
-            'password': os.getenv('DB_PASSWORD', '')
+            'host': os.getenv('DB_HOST'),
+            'port': os.getenv('DB_PORT', 5432),
+            'database': os.getenv('DB_NAME'),
+            'user': os.getenv('DB_USER'),
+            'password': os.getenv('DB_PASSWORD')
         }
         
         print(f"Подключение к: {conn_params['host']}:{conn_params['port']}")
@@ -142,7 +142,7 @@ def main():
     # Шаг 6: Загрузка тестовых данных
     step_message(6, "ЗАГРУЗКА ТЕСТОВЫХ ДАННЫХ")
     
-    db_name = os.getenv('DB_NAME', 'postgres')
+    db_name = os.getenv('DB_NAME')
     psql_cmd = f'psql -U postgres -d {db_name} -f "src/sql_test_query/basic_test_data.sql"'
     
     psql_success = run_command(psql_cmd, "Загрузка данных через psql", ignore_errors=True)

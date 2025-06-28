@@ -9,14 +9,14 @@ from pathlib import Path
 # Добавляем путь к корню проекта
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Импортируем все routes
-from src.api.full_routes import app
+# Импортируем русскую версию API
+from src.api.russian_routes import app
 
 # Включаем CORS для работы с frontend
 CORS(app)
 
 if __name__ == '__main__':
-    print("🏥 Starting Medical Records System API...")
-    print("📍 URL: http://localhost:8000")
-    print("📚 Full API documentation available")
+    print("Запуск системы медкарт с русской локализацией...")
+    print("URL: http://localhost:8000")
+    print("Веб-интерфейс с правильным форматированием дат")
     app.run(host='0.0.0.0', port=8000, debug=True)
