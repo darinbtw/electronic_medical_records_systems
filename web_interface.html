@@ -588,6 +588,7 @@
         let prescriptionCount = 1;
         
         // Переключение вкладок
+        // Переключение вкладок
         function showSection(sectionId) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -596,9 +597,19 @@
             event.target.classList.add('active');
             
             if (sectionId === 'dashboard') loadDashboard();
-            if (sectionId === 'patients') loadSelects();
-            if (sectionId === 'appointments') { loadSelects(); loadAppointments(1); }
-            if (sectionId === 'records') { loadSelects(); loadCompletedAppointments(); loadMedicalRecords(1); }
+            if (sectionId === 'patients') {
+                loadSelects(); // Загружаем селекты
+                // НЕ загружаем автоматически список - будет по кнопке
+            }
+            if (sectionId === 'appointments') { 
+                loadSelects(); // Загружаем селекты
+                loadAppointments(1); 
+            }
+            if (sectionId === 'records') { 
+                loadSelects(); // Загружаем селекты
+                loadCompletedAppointments(); // Загружаем завершенные приемы
+                loadMedicalRecords(1); 
+            }
         }
         
         // Показ сообщений
@@ -756,8 +767,8 @@
                 showMessage('Ошибка поиска: ' + error.message, 'error');
             }
         }
-        
-        // Поиск пациентов на вкладке "Пациенты"
+
+        // Поиск пациентов на вкладке "Пациенты" 
         async function searchPatients(event) {
             event.preventDefault();
             const query = document.getElementById('search-query').value.trim();
@@ -772,9 +783,11 @@
                 const data = await response.json();
                 
                 const resultsEl = document.getElementById('search-results');
-                resultsEl.innerHTML = '<h4>Результаты поиска:</h4>';
+                const patientsListEl = document.getElementById('patients-list');
                 
                 if (data.patients && data.patients.length > 0) {
+                    // Показываем результаты поиска в карточках
+                    resultsEl.innerHTML = '<h4>Результаты поиска:</h4>';
                     data.patients.forEach(patient => {
                         resultsEl.innerHTML += `
                             <div class="patient-item" onclick="viewPatient(${patient.id})">
@@ -784,8 +797,47 @@
                             </div>
                         `;
                     });
+                    
+                    // ГЛАВНОЕ: Показываем результаты поиска в основной таблице
+                    let tableHTML = `
+                        <div class="search-info">🔍 Результаты поиска: ${data.patients.length} найдено</div>
+                        <div class="table-container">
+                            <table id="patients-table">
+                                <thead>
+                                    <tr>
+                                        <th class="col-id">ID</th>
+                                        <th class="col-fio">ФИО</th>
+                                        <th class="col-birth">Дата рождения</th>
+                                        <th class="col-phone">Телефон</th>
+                                        <th class="col-email">Email</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    data.patients.forEach(patient => {
+                        const fullName = `${patient.last_name} ${patient.first_name} ${patient.middle_name || ''}`.trim();
+                        
+                        tableHTML += `
+                            <tr onclick="viewPatient(${patient.id})" style="cursor: pointer;">
+                                <td class="col-id">${patient.id}</td>
+                                <td class="col-fio text-ellipsis" title="${fullName}">${fullName}</td>
+                                <td class="col-birth">${patient.birth_date || '-'}</td>
+                                <td class="col-phone text-ellipsis" title="${patient.phone || '-'}">${patient.phone || '-'}</td>
+                                <td class="col-email text-ellipsis" title="${patient.email || '-'}">${patient.email || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    tableHTML += `</tbody></table></div>`;
+                    tableHTML += `<div class="pagination-info">Найдено: ${data.patients.length} пациентов</div>`;
+                    
+                    // Заменяем содержимое основной таблицы
+                    patientsListEl.innerHTML = tableHTML;
+                    
                 } else {
-                    resultsEl.innerHTML += '<p class="no-data">Пациенты не найдены</p>';
+                    resultsEl.innerHTML = '<h4>Результаты поиска:</h4><p class="no-data">Пациенты не найдены</p>';
+                    patientsListEl.innerHTML = '<p class="no-data">По запросу ничего не найдено</p>';
                 }
             } catch (error) {
                 showMessage('Ошибка поиска: ' + error.message, 'error');
@@ -996,54 +1048,89 @@
                 showMessage('Ошибка просмотра медкарты: ' + error.message, 'error');
             }
         }
-        
+
         // Загрузка селектов
         async function loadSelects() {
+            console.log("Загрузка селектов...");
+            
             try {
-                // Загружаем пациентов для селекта
+                // Загружаем пациентов для селекта (больше записей)
                 const patientsResponse = await fetch(`${API_URL}/api/patients?per_page=1000`);
                 const patientsData = await patientsResponse.json();
                 
+                console.log("Пациенты загружены:", patientsData.patients?.length || 0);
+                
                 const patientSelect = document.getElementById('patient-select');
-                if (patientSelect) {
+                if (patientSelect && patientsData.patients) {
                     patientSelect.innerHTML = '<option value="">Выберите пациента...</option>';
                     patientsData.patients.forEach(patient => {
-                        patientSelect.innerHTML += `<option value="${patient.id}">${patient.last_name} ${patient.first_name}</option>`;
+                        const fullName = `${patient.last_name} ${patient.first_name} ${patient.middle_name || ''}`.trim();
+                        patientSelect.innerHTML += `<option value="${patient.id}">${fullName}</option>`;
                     });
+                    console.log("Селект пациентов обновлен");
                 }
                 
                 // Загружаем врачей
                 const doctorsResponse = await fetch(`${API_URL}/api/search?type=doctors`);
                 const doctorsData = await doctorsResponse.json();
                 
+                console.log("Врачи загружены:", doctorsData.doctors?.length || 0);
+                
                 const doctorSelect = document.getElementById('doctor-select');
                 if (doctorSelect && doctorsData.doctors) {
                     doctorSelect.innerHTML = '<option value="">Выберите врача...</option>';
                     doctorsData.doctors.forEach(doctor => {
-                        doctorSelect.innerHTML += `<option value="${doctor.id}">${doctor.last_name} ${doctor.first_name} - ${doctor.specialization}</option>`;
+                        const fullName = `${doctor.last_name} ${doctor.first_name} ${doctor.middle_name || ''}`.trim();
+                        doctorSelect.innerHTML += `<option value="${doctor.id}">${fullName} - ${doctor.specialization}</option>`;
                     });
+                    console.log("Селект врачей обновлен");
                 }
                 
             } catch (error) {
-                console.error('Error loading selects:', error);
+                console.error('Ошибка загрузки селектов:', error);
+                showMessage('Ошибка загрузки списков: ' + error.message, 'error');
             }
         }
         
-        // Загрузка завершенных приемов для медкарт
+        // Загрузка приемов БЕЗ медицинских записей
         async function loadCompletedAppointments() {
             try {
-                const response = await fetch(`${API_URL}/api/appointments?status=completed&per_page=1000`);
+                // Ищем завершенные приемы, у которых НЕТ медкарт
+                const response = await fetch(`${API_URL}/api/appointments-without-records`);
                 const data = await response.json();
                 
                 const appointmentSelect = document.getElementById('appointment-select');
-                if (appointmentSelect && data.appointments) {
+                if (appointmentSelect) {
                     appointmentSelect.innerHTML = '<option value="">Выберите прием...</option>';
-                    data.appointments.forEach(appointment => {
-                        appointmentSelect.innerHTML += `<option value="${appointment.id}">${appointment.appointment_date} - ${appointment.patient_name} / ${appointment.doctor_name}</option>`;
-                    });
+                    
+                    if (data.appointments && data.appointments.length > 0) {
+                        data.appointments.forEach(appointment => {
+                            appointmentSelect.innerHTML += `<option value="${appointment.id}">${appointment.appointment_date} - ${appointment.patient_name} / ${appointment.doctor_name}</option>`;
+                        });
+                        console.log(`Загружено ${data.appointments.length} приемов без медкарт`);
+                    } else {
+                        appointmentSelect.innerHTML += '<option value="">Нет приемов без медкарт</option>';
+                        console.log("Все приемы уже имеют медкарты");
+                    }
                 }
             } catch (error) {
-                console.error('Error loading completed appointments:', error);
+                console.error('Ошибка загрузки приемов без медкарт:', error);
+                
+                // Резервный вариант - загружаем все завершенные приемы
+                try {
+                    const response = await fetch(`${API_URL}/api/appointments?status=completed&per_page=100`);
+                    const data = await response.json();
+                    
+                    const appointmentSelect = document.getElementById('appointment-select');
+                    if (appointmentSelect && data.appointments) {
+                        appointmentSelect.innerHTML = '<option value="">Выберите прием...</option>';
+                        data.appointments.forEach(appointment => {
+                            appointmentSelect.innerHTML += `<option value="${appointment.id}">${appointment.appointment_date} - ${appointment.patient_name} / ${appointment.doctor_name}</option>`;
+                        });
+                    }
+                } catch (fallbackError) {
+                    console.error('Резервная загрузка тоже не сработала:', fallbackError);
+                }
             }
         }
         

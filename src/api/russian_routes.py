@@ -598,6 +598,45 @@ def get_appointments_paginated():
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/appointments-without-records', methods=['GET'])
+def get_appointments_without_records():
+    """Получить завершенные приемы без медицинских записей"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT a.*, 
+                       p.first_name || ' ' || p.last_name as patient_name,
+                       d.first_name || ' ' || d.last_name as doctor_name,
+                       d.specialization
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                LEFT JOIN medical_records mr ON a.id = mr.appointment_id
+                WHERE a.status = 'completed' 
+                AND mr.id IS NULL
+                ORDER BY a.appointment_date DESC
+                LIMIT 100
+            """)
+            
+            appointments = cursor.fetchall()
+            
+            # Форматируем каждый прием
+            formatted_appointments = []
+            for appointment in appointments:
+                formatted = dict(appointment)
+                formatted['appointment_date'] = format_datetime_russian(
+                    formatted['appointment_date']
+                )
+                formatted_appointments.append(formatted)
+            
+            return jsonify({
+                'appointments': formatted_appointments,
+                'count': len(formatted_appointments)
+            })
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/medical-records', methods=['GET'])
 def get_medical_records_paginated():
