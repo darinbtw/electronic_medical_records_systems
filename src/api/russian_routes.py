@@ -273,10 +273,35 @@ def get_patient(patient_id):
 
 @app.route('/api/appointments', methods=['GET'])
 def get_appointments():
-    """Получить список приемов с русским форматированием"""
+    """Получить список приемов с русским форматированием и пагинацией"""
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    status_filter = request.args.get('status', '')
+    offset = (page - 1) * per_page
+    
     try:
         with db.get_cursor() as cursor:
-            cursor.execute("""
+            # Строим WHERE условие для фильтра
+            where_clause = ""
+            params = []
+            
+            if status_filter:
+                where_clause = "WHERE a.status = %s"
+                params.append(status_filter)
+            
+            # Общее количество с учетом фильтра
+            count_query = f"""
+                SELECT COUNT(*) as total 
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                {where_clause}
+            """
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()['total']
+            
+            # Приемы на странице с учетом фильтра
+            main_query = f"""
                 SELECT a.*, 
                        p.first_name || ' ' || p.last_name as patient_name,
                        d.first_name || ' ' || d.last_name as doctor_name,
@@ -284,10 +309,12 @@ def get_appointments():
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id
                 JOIN doctors d ON a.doctor_id = d.id
-                ORDER BY a.appointment_date DESC 
-                LIMIT 100
-            """)
+                {where_clause}
+                ORDER BY a.appointment_date DESC
+                LIMIT %s OFFSET %s
+            """
             
+            cursor.execute(main_query, params + [per_page, offset])
             appointments = cursor.fetchall()
             
             # Форматируем каждый прием
@@ -312,13 +339,20 @@ def get_appointments():
                 
                 formatted_appointments.append(formatted)
             
-            return jsonify({'appointments': formatted_appointments})
+            return jsonify({
+                'appointments': formatted_appointments,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'pages': (total + per_page - 1) // per_page if total > 0 else 1
+                }
+            })
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # === СТАТИСТИКА ===
-
 @app.route('/api/statistics', methods=['GET'])
 def get_statistics():
     """Получить статистику системы"""
@@ -522,7 +556,7 @@ def get_medical_records_paginated():
                     'page': page,
                     'per_page': per_page,
                     'total': total,
-                    'pages': (total + per_page - 1) // per_page
+                    'pages': (total + per_page - 1) // per_page if total > 0 else 1
                 }
             })
             
