@@ -1,4 +1,3 @@
-# === src/database/connection.py ===
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
@@ -15,7 +14,6 @@ try:
     from src.config import Config
     config = Config()
 except ImportError:
-    # Если не удается импортировать Config, используем прямую загрузку .env
     from dotenv import load_dotenv
     load_dotenv()
     
@@ -35,7 +33,8 @@ class DatabaseConnection:
             'port': config.DB_PORT,
             'database': config.DB_NAME,
             'user': config.DB_USER,
-            'password': config.DB_PASSWORD
+            'password': config.DB_PASSWORD,
+            'client_encoding': 'utf8'  # Добавляем явную кодировку
         }
         
         # Настройка логирования
@@ -92,12 +91,12 @@ db = DatabaseConnection()
 
 # Тестирование при прямом запуске
 if __name__ == "__main__":
-    print("🔍 Тестирование подключения к базе данных...")
-    print(f"📋 Параметры подключения: {db.get_connection_info()}")
+    print("Тестирование подключения к базе данных...")
+    print(f"Параметры подключения: {db.get_connection_info()}")
     
     try:
         if db.test_connection():
-            print("✅ Подключение к базе данных успешно!")
+            print("УСПЕХ: Подключение к базе данных работает!")
             
             # Дополнительная проверка таблиц
             with db.get_cursor() as cursor:
@@ -110,17 +109,18 @@ if __name__ == "__main__":
                 tables = cursor.fetchall()
                 
                 if tables:
-                    print(f"✅ Найдено таблиц: {len(tables)}")
+                    print(f"Найдено таблиц: {len(tables)}")
                     for table in tables:
                         print(f"   - {table['table_name']}")
                 else:
-                    print("⚠️  Таблицы не найдены. Возможно, нужно выполнить миграции.")
+                    print("ВНИМАНИЕ: Таблицы не найдены. Выполните:")
+                    print("python src/database/create_table.py")
         else:
-            print("❌ Не удалось подключиться к базе данных!")
+            print("ОШИБКА: Не удалось подключиться к базе данных!")
             
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
-        print("\n🔧 Возможные причины:")
+        print(f"ОШИБКА: {e}")
+        print("\nВозможные причины:")
         print("1. PostgreSQL не запущен")
         print("2. Неверные данные в .env файле")
         print("3. База данных не создана")
