@@ -1,50 +1,76 @@
 """
-Backup скрипт для системы медкарт
+Универсальный backup (Python + pg_dump)
 """
 import os
+import sys
 import subprocess
-import datetime
-import gzip
-import shutil
+from pathlib import Path
 
-def create_backup():
-    db_name = "medical_records"
-    db_user = "postgres"
-    backup_dir = "backups"
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+def try_pg_dump_backup():
+    """Пытаемся использовать pg_dump"""
+    print("🔄 Попытка pg_dump backup...")
     
-    # Создаем директорию
-    os.makedirs(backup_dir, exist_ok=True)
+    # Возможные команды pg_dump
+    pg_dump_commands = [
+        "pg_dump",
+        r"C:\Program Files\PostgreSQL\16\bin\pg_dump.exe",
+        r"C:\Program Files\PostgreSQL\15\bin\pg_dump.exe",
+        "scripts/pg_dump_wrapper.py"
+    ]
     
-    # Генерируем имя файла
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = f"{backup_dir}/backup_{timestamp}.sql"
+    for cmd in pg_dump_commands:
+        try:
+            if cmd.endswith('.py'):
+                test_result = subprocess.run([sys.executable, cmd, '--version'], 
+                                           capture_output=True, text=True, timeout=10)
+            else:
+                test_result = subprocess.run([cmd, '--version'], 
+                                           capture_output=True, text=True, timeout=10)
+            
+            if test_result.returncode == 0:
+                print(f"✅ Найден: {cmd}")
+                return True
+        except:
+            continue
     
-    print("Создание backup...")
+    print("❌ pg_dump недоступен")
+    return False
+
+def python_backup():
+    """Резервный Python backup"""
+    print("🐍 Используем Python backup...")
     
     try:
-        # Выполняем pg_dump
-        cmd = ["pg_dump", "-U", db_user, "-d", db_name]
-        
-        with open(backup_file, 'w', encoding='utf-8') as f:
-            result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run([sys.executable, "scripts/python_backup.py"], 
+                              capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
-            print(f"Backup создан: {backup_file}")
-            
-            # Сжимаем файл
-            with open(backup_file, 'rb') as f_in:
-                with gzip.open(f"{backup_file}.gz", 'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            
-            os.remove(backup_file)  # Удаляем несжатый файл
-            print(f"Backup сжат: {backup_file}.gz")
-            
+            print("✅ Python backup успешен")
+            return True
         else:
-            print(f"Ошибка создания backup: {result.stderr}")
+            print(f"❌ Ошибка Python backup: {result.stderr}")
+            return False
             
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"❌ Ошибка: {e}")
+        return False
+
+def main():
+    """Главная функция - пробуем pg_dump, потом Python"""
+    print("💾 УНИВЕРСАЛЬНЫЙ BACKUP")
+    print("=" * 25)
+    
+    # Сначала пробуем pg_dump
+    if try_pg_dump_backup():
+        print("Используем pg_dump (быстрее)")
+    
+    # Если pg_dump не работает, используем Python
+    if python_backup():
+        print("✅ Backup завершен успешно")
+    else:
+        print("❌ Все методы backup не сработали")
 
 if __name__ == "__main__":
-    create_backup()
-    input("Нажмите Enter для выхода...")
+    main()

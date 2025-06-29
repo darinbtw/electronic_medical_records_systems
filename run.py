@@ -24,21 +24,32 @@ except ImportError:
     import schedule
 
 def create_backup():
-    """Создание backup"""
+    """Создание Python backup"""
     from datetime import datetime
     import subprocess
     
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 Автоматический backup...")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}]  Автоматический Python backup...")
     
     try:
-        result = subprocess.run([sys.executable, "scripts/backup.py"], 
-                              capture_output=True, text=True, timeout=300)
+        # Используем наш рабочий Python backup
+        result = subprocess.run([sys.executable, "scripts/python_backup.py"], 
+                              capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Backup завершен")
+            # Парсим вывод для получения информации о размере
+            output_lines = result.stdout.strip().split('\n')
+            for line in output_lines:
+                if 'Готово:' in line:
+                    backup_file = line.split('Готово: ')[-1]
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Backup создан: {backup_file}")
+                    break
+            else:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Python backup завершен успешно")
         else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Ошибка backup")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Ошибка backup: {result.stderr}")
             
+    except subprocess.TimeoutExpired:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Timeout Python backup (60с)")
     except Exception as e:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Backup ошибка: {e}")
 
@@ -72,7 +83,7 @@ def cleanup_old_backups():
 def backup_scheduler():
     """Планировщик backup в отдельном потоке"""
     # Настройка расписания
-    schedule.every().day.at("07:45").do(create_backup)
+    schedule.every().day.at("02:00").do(create_backup)
     schedule.every().day.at("14:00").do(create_backup)
     schedule.every().day.at("03:00").do(cleanup_old_backups)
     
