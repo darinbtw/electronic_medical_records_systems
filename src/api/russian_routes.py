@@ -388,5 +388,329 @@ def create_patient():
     except Exception as e:
         return jsonify({'error': f'Ошибка создания пациента: {str(e)}'}), 500
 
+@app.route('/api/appointments', methods=['GET'])
+def get_appointments_paginated():
+    """Получить список приемов с пагинацией и фильтрами"""
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    status_filter = request.args.get('status', '')
+    offset = (page - 1) * per_page
+    
+    try:
+        with db.get_cursor() as cursor:
+            # Строим WHERE условие
+            where_clause = ""
+            params = []
+            
+            if status_filter:
+                where_clause = "WHERE a.status = %s"
+                params.append(status_filter)
+            
+            # Общее количество
+            count_query = f"""
+                SELECT COUNT(*) as total 
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                {where_clause}
+            """
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()['total']
+            
+            # Приемы на странице
+            main_query = f"""
+                SELECT a.*, 
+                       p.first_name || ' ' || p.last_name as patient_name,
+                       d.first_name || ' ' || d.last_name as doctor_name,
+                       d.specialization
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                {where_clause}
+                ORDER BY a.appointment_date DESC
+                LIMIT %s OFFSET %s
+            """
+            
+            cursor.execute(main_query, params + [per_page, offset])
+            appointments = cursor.fetchall()
+            
+            # Форматируем каждый прием
+            formatted_appointments = []
+            for appointment in appointments:
+                formatted = dict(appointment)
+                
+                # Форматируем дату и время приема
+                formatted['appointment_date'] = format_datetime_russian(
+                    formatted['appointment_date']
+                )
+                
+                # Переводим статус
+                status_map = {
+                    'scheduled': 'запланирован',
+                    'completed': 'завершен', 
+                    'cancelled': 'отменен'
+                }
+                formatted['status'] = status_map.get(
+                    formatted['status'], formatted['status']
+                )
+                
+                formatted_appointments.append(formatted)
+            
+            return jsonify({
+                'appointments': formatted_appointments,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'pages': (total + per_page - 1) // per_page
+                }
+            })
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/medical-records', methods=['GET'])
+def get_medical_records_paginated():
+    """Получить список медицинских записей с пагинацией"""
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    offset = (page - 1) * per_page
+    
+    try:
+        with db.get_cursor() as cursor:
+            # Общее количество
+            cursor.execute("SELECT COUNT(*) as total FROM medical_records")
+            total = cursor.fetchone()['total']
+            
+            # Записи на странице
+            cursor.execute("""
+                SELECT mr.*, 
+                       a.appointment_date,
+                       p.first_name || ' ' || p.last_name as patient_name,
+                       d.first_name || ' ' || d.last_name as doctor_name
+                FROM medical_records mr
+                JOIN appointments a ON mr.appointment_id = a.id
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                ORDER BY mr.created_at DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            
+            records = cursor.fetchall()
+            
+            # Форматируем записи (без расшифровки диагноза)
+            formatted_records = []
+            for record in records:
+                formatted = dict(record)
+                
+                # Форматируем дату приема
+                formatted['appointment_date'] = format_datetime_russian(
+                    formatted['appointment_date']
+                )
+                
+                # Удаляем зашифрованные данные из списка
+                if 'diagnosis_encrypted' in formatted:
+                    del formatted['diagnosis_encrypted']
+                if 'diagnosis_iv' in formatted:
+                    del formatted['diagnosis_iv']
+                
+                formatted_records.append(formatted)
+            
+            return jsonify({
+                'records': formatted_records,
+                'pagination': {
+                    'page': page,
+                    'per_page': per_page,
+                    'total': total,
+                    'pages': (total + per_page - 1) // per_page
+                }
+            })
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/medical-records/<int:record_id>', methods=['GET'])
+def get_medical_record_with_decryption(record_id):
+    """Получить медицинскую запись с расшифровкой диагноза"""
+    try:
+        with db.get_cursor() as cursor:
+            # Получаем запись
+            cursor.execute("""
+                SELECT mr.*, a.appointment_date,
+                       p.first_name || ' ' || p.last_name as patient_name,
+                       d.first_name || ' ' || d.last_name as doctor_name
+                FROM medical_records mr
+                JOIN appointments a ON mr.appointment_id = a.id
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                WHERE mr.id = %s
+            """, (record_id,))
+            
+            record = cursor.fetchone()
+            
+            if not record:
+                return jsonify({'error': 'Медицинская запись не найдена'}), 404
+            
+            # Форматируем данные
+            formatted_record = dict(record)
+            
+            # Расшифровываем диагноз
+            if record['diagnosis_encrypted'] and record['diagnosis_iv']:
+                try:
+                    decrypted = encryption.decrypt(
+                        bytes(record['diagnosis_encrypted']),
+                        bytes(record['diagnosis_iv'])
+                    )
+                    formatted_record['diagnosis'] = decrypted
+                except Exception as e:
+                    formatted_record['diagnosis'] = f"Ошибка расшифровки: {e}"
+            else:
+                formatted_record['diagnosis'] = "Диагноз не зашифрован"
+            
+            # Удаляем зашифрованные данные
+            del formatted_record['diagnosis_encrypted']
+            del formatted_record['diagnosis_iv']
+            
+            # Форматируем дату
+            formatted_record['appointment_date'] = format_datetime_russian(
+                formatted_record['appointment_date']
+            )
+            
+            # Получаем назначения
+            cursor.execute("""
+                SELECT * FROM prescriptions 
+                WHERE medical_record_id = %s
+                ORDER BY id
+            """, (record_id,))
+            
+            formatted_record['prescriptions'] = cursor.fetchall()
+            
+            return jsonify(formatted_record)
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/appointments', methods=['POST'])
+def create_appointment():
+    """Создать новый прием"""
+    data = request.get_json()
+    
+    required = ['patient_id', 'doctor_id', 'appointment_date']
+    for field in required:
+        if field not in data:
+            return jsonify({'error': f'Отсутствует поле: {field}'}), 400
+    
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO appointments 
+                (patient_id, doctor_id, appointment_date, status)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, created_at
+            """, (
+                data['patient_id'],
+                data['doctor_id'],
+                data['appointment_date'],
+                data.get('status', 'scheduled')
+            ))
+            
+            result = cursor.fetchone()
+            
+            return jsonify({
+                'id': result['id'],
+                'created_at': format_datetime_russian(result['created_at']),
+                'message': 'Прием успешно создан'
+            }), 201
+            
+    except Exception as e:
+        return jsonify({'error': f'Ошибка создания приема: {str(e)}'}), 500
+
+@app.route('/api/medical-records', methods=['POST'])
+def create_medical_record():
+    """Создать медицинскую запись с шифрованным диагнозом"""
+    data = request.get_json()
+    
+    required = ['appointment_id', 'diagnosis']
+    for field in required:
+        if field not in data:
+            return jsonify({'error': f'Отсутствует поле: {field}'}), 400
+    
+    try:
+        # Шифруем диагноз
+        encrypted_diagnosis, iv = encryption.encrypt(data['diagnosis'])
+        
+        with db.get_cursor() as cursor:
+            # Проверяем, что прием существует и можно создать запись
+            cursor.execute("""
+                SELECT id, status FROM appointments 
+                WHERE id = %s
+            """, (data['appointment_id'],))
+            
+            appointment = cursor.fetchone()
+            if not appointment:
+                return jsonify({'error': 'Прием не найден'}), 400
+            
+            # Проверяем, что запись для этого приема еще не создана
+            cursor.execute("""
+                SELECT id FROM medical_records 
+                WHERE appointment_id = %s
+            """, (data['appointment_id'],))
+            
+            existing_record = cursor.fetchone()
+            if existing_record:
+                return jsonify({'error': 'Медицинская запись для этого приема уже существует'}), 400
+            
+            # Обновляем статус приема на "завершен"
+            cursor.execute("""
+                UPDATE appointments 
+                SET status = 'completed' 
+                WHERE id = %s
+            """, (data['appointment_id'],))
+            
+            # Создаем запись
+            cursor.execute("""
+                INSERT INTO medical_records 
+                (appointment_id, diagnosis_encrypted, diagnosis_iv, 
+                 complaints, examination_results)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id, created_at
+            """, (
+                data['appointment_id'],
+                encrypted_diagnosis,
+                iv,
+                data.get('complaints'),
+                data.get('examination_results')
+            ))
+            
+            result = cursor.fetchone()
+            record_id = result['id']
+            
+            # Добавляем назначения
+            if 'prescriptions' in data and data['prescriptions']:
+                for prescription in data['prescriptions']:
+                    if prescription.get('medication_name'):  # Проверяем что название препарата не пустое
+                        cursor.execute("""
+                            INSERT INTO prescriptions 
+                            (medical_record_id, medication_name, dosage, 
+                             frequency, duration, notes)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (
+                            record_id,
+                            prescription['medication_name'],
+                            prescription.get('dosage'),
+                            prescription.get('frequency'),
+                            prescription.get('duration'),
+                            prescription.get('notes')
+                        ))
+            
+            return jsonify({
+                'id': record_id,
+                'created_at': format_datetime_russian(result['created_at']),
+                'message': 'Медицинская запись успешно создана'
+            }), 201
+            
+    except Exception as e:
+        return jsonify({'error': f'Ошибка создания медкарты: {str(e)}'}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True)
