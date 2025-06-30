@@ -709,22 +709,228 @@
             </div>
         </section>
 
-        <!-- Other sections would go here -->
+        <!-- Appointments Section -->
         <section id="appointments" class="content-section">
+            <div class="grid grid-2">
+                <!-- Create Appointment Form -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">➕ Записать на приём</h3>
+                    </div>
+                    
+                    <form id="appointment-form">
+                        <div class="form-group">
+                            <label class="form-label">Пациент *</label>
+                            <select name="patient_id" class="form-control" required>
+                                <option value="">Выберите пациента</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Врач *</label>
+                            <select name="doctor_id" class="form-control" required>
+                                <option value="">Выберите врача</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Дата приёма *</label>
+                                <input type="date" name="appointment_date" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Время *</label>
+                                <input type="time" name="appointment_time" class="form-control" required>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Статус</label>
+                            <select name="status" class="form-control">
+                                <option value="scheduled">Запланирован</option>
+                                <option value="completed">Завершён</option>
+                                <option value="cancelled">Отменён</option>
+                            </select>
+                        </div>
+
+                        <div class="btn-group">
+                            <button type="submit" class="btn btn-success">
+                                ✅ Записать на приём
+                            </button>
+                            <button type="reset" class="btn btn-outline">
+                                🗑️ Очистить форму
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Filter Appointments -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🔍 Фильтр приёмов</h3>
+                    </div>
+                    
+                    <form id="appointment-filter-form">
+                        <div class="form-group">
+                            <label class="form-label">Статус приёма</label>
+                            <select class="form-control" id="appointment-status-filter">
+                                <option value="">Все приёмы</option>
+                                <option value="scheduled">Запланированные</option>
+                                <option value="completed">Завершённые</option>
+                                <option value="cancelled">Отменённые</option>
+                            </select>
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-primary" onclick="filterAppointments()">
+                                🔍 Применить фильтр
+                            </button>
+                            <button type="button" class="btn btn-outline" onclick="loadAppointments()">
+                                📋 Показать все
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Appointments List -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">📅 Приёмы</h3>
+                    <h3 class="card-title">📅 Список приёмов</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-outline btn-sm" onclick="loadAppointments(1, 20)">
+                            20 на стр.
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="loadAppointments(1, 50)">
+                            50 на стр.
+                        </button>
+                    </div>
                 </div>
-                <p>Раздел приёмов в разработке...</p>
+                
+                <div id="appointments-list-container">
+                    <div class="loading">Загрузка приёмов...</div>
+                </div>
             </div>
         </section>
 
+        <!-- Medical Records Section -->
         <section id="records" class="content-section">
+            <div class="grid grid-2">
+                <!-- Create Medical Record Form -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">➕ Создать медкарту</h3>
+                    </div>
+                    
+                    <form id="medical-record-form">
+                        <div class="form-group">
+                            <label class="form-label">Завершённый приём *</label>
+                            <select name="appointment_id" class="form-control" required>
+                                <option value="">Выберите приём</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Жалобы пациента</label>
+                            <textarea name="complaints" class="form-control" rows="3" 
+                                      placeholder="Основные жалобы пациента..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Результаты осмотра</label>
+                            <textarea name="examination_results" class="form-control" rows="3" 
+                                      placeholder="Данные осмотра, показатели..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Диагноз * (будет зашифрован)</label>
+                            <textarea name="diagnosis" class="form-control" rows="2" required
+                                      placeholder="Диагноз врача..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Назначения</label>
+                            <div id="prescriptions-container">
+                                <div class="prescription-item" style="border: 1px solid var(--border-color); padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <input type="text" name="medication_name_1" class="form-control" placeholder="Название препарата">
+                                        </div>
+                                        <div class="form-group">
+                                            <input type="text" name="dosage_1" class="form-control" placeholder="Дозировка">
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <input type="text" name="frequency_1" class="form-control" placeholder="Частота приёма">
+                                        </div>
+                                        <div class="form-group">
+                                            <input type="text" name="duration_1" class="form-control" placeholder="Длительность">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <input type="text" name="notes_1" class="form-control" placeholder="Примечания">
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="addPrescription()">
+                                ➕ Добавить назначение
+                            </button>
+                        </div>
+
+                        <div class="btn-group">
+                            <button type="submit" class="btn btn-success">
+                                ✅ Создать медкарту
+                            </button>
+                            <button type="reset" class="btn btn-outline">
+                                🗑️ Очистить форму
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Medical Records Search -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🔍 Поиск медкарт</h3>
+                    </div>
+                    
+                    <form id="records-search-form">
+                        <div class="form-group">
+                            <label class="form-label">Поиск по пациенту</label>
+                            <input type="text" class="form-control" id="records-search-input"
+                                   placeholder="ФИО пациента...">
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button type="submit" class="btn btn-primary">
+                                🔍 Найти
+                            </button>
+                            <button type="button" class="btn btn-outline" onclick="loadMedicalRecords()">
+                                📋 Показать все
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Medical Records List -->
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">📋 Медкарты</h3>
+                    <h3 class="card-title">📋 Медицинские записи</h3>
+                    <div class="btn-group">
+                        <button class="btn btn-outline btn-sm" onclick="loadMedicalRecords(1, 20)">
+                            20 на стр.
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="loadMedicalRecords(1, 50)">
+                            50 на стр.
+                        </button>
+                    </div>
                 </div>
-                <p>Раздел медкарт в разработке...</p>
+                
+                <div id="medical-records-list-container">
+                    <div class="loading">Загрузка медкарт...</div>
+                </div>
             </div>
         </section>
 
