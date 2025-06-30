@@ -5,6 +5,9 @@ import logging
 import os
 import sys
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Устанавливаем UTF-8 для всей системы
 if sys.platform.startswith('win'):
     # Для Windows устанавливаем кодовую страницу UTF-8
@@ -37,7 +40,7 @@ except ImportError:
     config = SimpleConfig()
 
 # Импортируем TDE только если включен
-TDE_ENABLED = os.getenv('TDE_ENABLED', 'False').lower() == 'true'
+TDE_ENABLED = os.getenv('TDE_ENABLED').lower() == 'true'
 
 if TDE_ENABLED:
     try:
@@ -47,17 +50,14 @@ if TDE_ENABLED:
         print(f"⚠️ TDE недоступен: {e}")
         TDE_ENABLED = False
 
-
 class DatabaseConnection:
     def __init__(self):
-        # КРИТИЧНО: Правильные параметры подключения для UTF-8
         self.connection_params = {
             'host': config.DB_HOST,
             'port': int(config.DB_PORT) if config.DB_PORT else 5432,
             'database': config.DB_NAME,
             'user': config.DB_USER,
             'password': config.DB_PASSWORD or '',
-            # ОСНОВНЫЕ UTF-8 НАСТРОЙКИ
             'client_encoding': 'UTF8',
             'options': '-c client_encoding=UTF8 -c timezone=UTC'
         }

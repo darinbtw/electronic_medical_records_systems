@@ -71,6 +71,20 @@ CREATE TABLE prescriptions(
     notes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS patients_audit (
+    audit_id SERIAL PRIMARY KEY,
+    patient_id INTEGER NOT NULL,
+    operation CHAR(1) NOT NULL CHECK (operation IN ('I', 'U', 'D')),
+    old_data JSONB,
+    new_data JSONB,
+    changed_by TEXT DEFAULT current_user,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индекс для быстрого поиска
+CREATE INDEX idx_patients_audit_patient_id ON patients_audit(patient_id);
+CREATE INDEX idx_patients_audit_changed_at ON patients_audit(changed_at);
+
 -- Создание индексов
 CREATE INDEX idx_patients_name ON patients(last_name, first_name);
 CREATE INDEX idx_patients_birth_date ON patients(birth_date);
