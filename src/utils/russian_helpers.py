@@ -1,5 +1,3 @@
-# Создайте файл: src/utils/russian_helpers.py
-
 from datetime import datetime
 import locale
 

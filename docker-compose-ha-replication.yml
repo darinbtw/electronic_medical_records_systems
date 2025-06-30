@@ -1,0 +1,312 @@
+# Полная настройка высокодоступной репликации PostgreSQL для системы медкарт
+version: '3.8'
+
+networks:
+  medical-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  # ===== MASTER NODE (Primary) =====
+  postgres-master:
+    image: postgres:16-alpine
+    container_name: medical-postgres-master
+    hostname: postgres-master
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_DB: medical_records
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: repl_password_2024
+      
+    command: |
+      postgres
+      -c wal_level=replica
+      -c hot_standby=on
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c wal_keep_size=1024MB
+      -c synchronous_commit=on
+      -c synchronous_standby_names='replica1,replica2'
+      -c archive_mode=on
+      -c archive_command='test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
+      -c restore_command='cp /var/lib/postgresql/archive/%f %p'
+      -c listen_addresses='*'
+      -c max_connections=200
+      -c shared_preload_libraries='pg_stat_statements'
+      -c log_statement=all
+      -c log_destination='stderr'
+      -c logging_collector=on
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+      
+    ports:
+      - "5432:5432"
+      
+    volumes:
+      - postgres-master-data:/var/lib/postgresql/data
+      - postgres-archive:/var/lib/postgresql/archive
+      - ./scripts/replication/init-master.sh:/docker-entrypoint-initdb.d/01-init-master.sh
+      - ./scripts/replication/master-setup.sql:/docker-entrypoint-initdb.d/02-master-setup.sql
+      
+    networks:
+      medical-network:
+        ipv4_address: 172.20.0.10
+        
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medical_records"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+      
+    labels:
+      - "role=master"
+      - "service=postgresql"
+      - "environment=production"
+
+  # ===== REPLICA 1 (Synchronous Standby) =====
+  postgres-replica1:
+    image: postgres:16-alpine
+    container_name: medical-postgres-replica1
+    hostname: postgres-replica1
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: repl_password_2024
+      POSTGRES_MASTER_HOST: postgres-master
+      PGUSER: postgres
+      
+    command: |
+      bash -c '
+      echo "🔄 Инициализация Replica1..."
+      
+      # Ждем готовности мастера
+      until pg_isready -h postgres-master -p 5432 -U postgres; do
+        echo "⏳ Ждем готовности мастера..."
+        sleep 5
+      done
+      
+      echo "✅ Мастер готов, создаем базовую копию..."
+      
+      # Очищаем директорию данных
+      rm -rf /var/lib/postgresql/data/*
+      
+      # Создаем базовую копию с мастера
+      PGPASSWORD=repl_password_2024 pg_basebackup \
+        -h postgres-master \
+        -D /var/lib/postgresql/data \
+        -U replicator \
+        -v -P -W -R \
+        -X stream \
+        -C -S replica1
+      
+      # Настраиваем репликацию
+      echo "primary_conninfo = '\''host=postgres-master port=5432 user=replicator password=repl_password_2024 application_name=replica1'\''" >> /var/lib/postgresql/data/postgresql.auto.conf
+      echo "promote_trigger_file = '\''/tmp/promote_replica1'\''" >> /var/lib/postgresql/data/postgresql.auto.conf
+      echo "recovery_target_timeline = '\''latest'\''" >> /var/lib/postgresql/data/postgresql.auto.conf
+      
+      # Создаем standby.signal
+      touch /var/lib/postgresql/data/standby.signal
+      
+      echo "🚀 Запуск Replica1..."
+      postgres
+      '
+      
+    ports:
+      - "5433:5432"
+      
+    volumes:
+      - postgres-replica1-data:/var/lib/postgresql/data
+      - postgres-archive:/var/lib/postgresql/archive:ro
+      
+    networks:
+      medical-network:
+        ipv4_address: 172.20.0.11
+        
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+        
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+      
+    labels:
+      - "role=replica"
+      - "replica_type=synchronous"
+      - "service=postgresql"
+
+  # ===== REPLICA 2 (Asynchronous Standby) =====
+  postgres-replica2:
+    image: postgres:16-alpine
+    container_name: medical-postgres-replica2
+    hostname: postgres-replica2
+    restart: unless-stopped
+    
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: repl_password_2024
+      POSTGRES_MASTER_HOST: postgres-master
+      PGUSER: postgres
+      
+    command: |
+      bash -c '
+      echo "🔄 Инициализация Replica2..."
+      
+      # Ждем готовности мастера и первой реплики
+      until pg_isready -h postgres-master -p 5432 -U postgres; do
+        echo "⏳ Ждем готовности мастера..."
+        sleep 5
+      done
+      
+      # Дополнительная задержка для стабилизации
+      sleep 15
+      
+      echo "✅ Мастер готов, создаем базовую копию..."
+      
+      # Очищаем директорию данных
+      rm -rf /var/lib/postgresql/data/*
+      
+      # Создаем базовую копию с мастера
+      PGPASSWORD=repl_password_2024 pg_basebackup \
+        -h postgres-master \
+        -D /var/lib/postgresql/data \
+        -U replicator \
+        -v -P -W -R \
+        -X stream \
+        -C -S replica2
+      
+      # Настраиваем репликацию
+      echo "primary_conninfo = '\''host=postgres-master port=5432 user=replicator password=repl_password_2024 application_name=replica2'\''" >> /var/lib/postgresql/data/postgresql.auto.conf
+      echo "promote_trigger_file = '\''/tmp/promote_replica2'\''" >> /var/lib/postgresql/data/postgresql.auto.conf
+      echo "recovery_target_timeline = '\''latest'\''" >> /var/lib/postgresql/data/postgresql.auto.conf
+      
+      # Создаем standby.signal
+      touch /var/lib/postgresql/data/standby.signal
+      
+      echo "🚀 Запуск Replica2..."
+      postgres
+      '
+      
+    ports:
+      - "5434:5432"
+      
+    volumes:
+      - postgres-replica2-data:/var/lib/postgresql/data
+      - postgres-archive:/var/lib/postgresql/archive:ro
+      
+    networks:
+      medical-network:
+        ipv4_address: 172.20.0.12
+        
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      postgres-replica1:
+        condition: service_healthy
+        
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+      
+    labels:
+      - "role=replica"
+      - "replica_type=asynchronous"
+      - "service=postgresql"
+
+  # ===== PGBOUNCER (Connection Pooling) =====
+  pgbouncer:
+    image: pgbouncer/pgbouncer:latest
+    container_name: medical-pgbouncer
+    restart: unless-stopped
+    
+    environment:
+      DATABASES_HOST: postgres-master
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: postgres
+      DATABASES_DBNAME: medical_records
+      POOL_MODE: transaction
+      SERVER_RESET_QUERY: DISCARD ALL
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 25
+      MIN_POOL_SIZE: 5
+      
+    ports:
+      - "6432:5432"
+      
+    networks:
+      medical-network:
+        ipv4_address: 172.20.0.20
+        
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+        
+    labels:
+      - "service=pgbouncer"
+      - "role=connection_pool"
+
+  # ===== MONITORING =====
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: medical-postgres-exporter
+    restart: unless-stopped
+    
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres-master:5432/medical_records?sslmode=disable"
+      PG_EXPORTER_INCLUDE_DATABASES: medical_records
+      
+    ports:
+      - "9187:9187"
+      
+    networks:
+      medical-network:
+        ipv4_address: 172.20.0.30
+        
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+        
+    labels:
+      - "service=monitoring"
+      - "type=postgres_exporter"
+
+  # ===== MEDICAL SYSTEM API =====
+  medical-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medical-api
+    restart: unless-stopped
+    
+    environment:
+      DB_HOST: pgbouncer
+      DB_PORT: 5432
+      DB_NAME: medical_records
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      TDE_ENABLED: "true"
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      
+    ports:
+      - "8000:8000"
+      
+    volumes:
+      -

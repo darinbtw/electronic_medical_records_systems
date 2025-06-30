@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+import time
 
 # Добавляем корневую папку в path
 sys.path.insert(0, str(Path(__file__).parent))
