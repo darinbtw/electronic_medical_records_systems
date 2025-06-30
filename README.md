@@ -54,6 +54,106 @@
 | **Frontend** | HTML5/CSS3/JS | ES2023 |
 | **Контейнеризация** | Docker | 24+ |
 
+🏗️ Архитектура
+Структура проекта
+ELECTRONIC_MEDICAL_RECORDS/
+├── 📁 .venv/                        # Виртуальное окружение Python
+├── 📁 backups/                      # Резервные копии БД
+├── 📁 docs/                         # Документация проекта
+│   ├── admin_guide.md               # Руководство администратора
+│   ├── diagram.jpg                  # Диаграммы системы
+│   ├── er_diagram.puml              # ER-диаграмма в PlantUML
+│   └── data_flow_diagram.puml       # Диаграмма потоков данных
+├── 📁 Documents/                    # Отчетная документация
+│   ├── Дневник_производственной_практики.docx
+│   ├── Индивидуальное_задание_Производственной_практики_2024.docx
+│   └── Отчет_по_практике_Подъячев_из_шаблона.docx
+├── 📁 scripts/                      # Административные скрипты
+│   ├── auto_backup.py               # Автоматическое резервирование
+│   ├── backup.bat                   # Backup для Windows
+│   ├── backup.py                    # Python backup скрипт
+│   ├── python_backup.py             # Backup без pg_dump
+│   ├── restore.py                   # Восстановление БД
+│   ├── restore.sh                   # Восстановление для Linux
+│   ├── setup_replication.sh         # Настройка репликации
+│   ├── setup_replication_3nodes.sh  # Репликация на 3 узла
+│   └── test_setup_replication_3nodes.py # Тесты репликации
+├── 📁 src/                          # Исходный код системы
+│   ├── 📁 api/                      # REST API модули
+│   │   ├── __init__.py
+│   │   ├── example_validation.md    # Примеры валидации
+│   │   ├── russian_routes.py        # API с русской локализацией
+│   │   └── validators.py            # Валидация данных
+│   ├── 📁 database/                 # Работа с базой данных
+│   │   ├── __init__.py
+│   │   ├── connection.py            # Подключение к БД + TDE
+│   │   ├── create_table.py          # Создание таблиц
+│   │   ├── load_test_data.py        # Загрузка тестовых данных
+│   │   └── 📁 migrations/           # SQL миграции
+│   │       ├── 01_create_tables.sql # Создание таблиц
+│   │       ├── 02_create_index.sql  # Создание индексов
+│   │       └── 03_create_constrains.sql # Ограничения целостности
+│   ├── 📁 docs/                     # Внутренняя документация
+│   │   └── data_flow_diagram.puml   # DFD диаграмма
+│   ├── 📁 models/                   # Модели данных
+│   │   ├── __init__.py
+│   │   ├── appointment.py           # Модель приемов
+│   │   ├── doctor.py               # Модель врачей
+│   │   ├── medical_record.py       # Модель медицинских записей
+│   │   └── patient.py              # Модель пациентов
+│   ├── 📁 security/                 # Модули безопасности
+│   │   ├── __init__.py
+│   │   ├── encryption.py           # AES-256 шифрование
+│   │   ├── sql_injection_test.py   # Тесты защиты от SQL-injection
+│   │   └── tde.py                  # Transparent Data Encryption
+│   ├── 📁 sql_test_query/          # SQL запросы для тестирования
+│   │   ├── avg_age_patients.sql    # Анализ возрастных групп
+│   │   ├── basic_test_data.sql     # Базовые тестовые данные
+│   │   ├── cleanup.sql             # Очистка БД
+│   │   ├── find_gmail.sql          # Поиск по email
+│   │   ├── generate_test_data.sql  # Генерация тестовых данных
+│   │   ├── search_first_name_and_last_name.sql # Поиск по ФИО
+│   │   └── search_pacient.sql      # Поиск пациентов
+│   ├── 📁 utils/                   # Утилиты и помощники
+│   │   ├── __init__.py
+│   │   ├── helpers.py              # Вспомогательные функции
+│   │   ├── helpers_example.md      # Примеры использования
+│   │   └── russian_helpers.py      # Русская локализация
+│   ├── config.py                   # Конфигурация системы
+│   └── main.py                     # Главный модуль API
+├── 📁 tests/                       # Модульные тесты
+│   ├── __init__.py
+│   ├── test_connection.py          # Тесты подключения к БД
+│   └── test_data.sql              # SQL данные для тестов
+├── 📄 Системные файлы
+│   ├── .encryption_key             # Ключ шифрования (создается автоматически)
+│   ├── .env                        # Переменные окружения
+│   ├── .env.example               # Пример настроек
+│   ├── .gitattributes             # Настройки Git
+│   ├── .gitignore                 # Исключения Git
+│   ├── .tde_master_key            # Мастер-ключ TDE
+│   └── .tde_master_key.backup.*   # Backup ключей TDE
+├── 📄 Конфигурационные файлы
+│   ├── commands.md                # Команды для управления
+│   ├── docker-compose-final.yml   # Docker конфигурация
+│   ├── docker-compose-ha-replication.yml # HA репликация
+│   ├── LICENSE                    # Лицензия MIT
+│   ├── primary-init.sh            # Инициализация primary узла
+│   ├── replica-entrypoint.sh      # Настройка replica узла
+│   └── requirements.txt           # Python зависимости
+├── 📄 Основные файлы
+│   ├── fix_utf8_db_by_issue.py    # Исправление проблем с UTF-8
+│   ├── init-master.sql            # Инициализация master БД
+│   ├── init.sql                   # Инициализация БД
+│   ├── README.md                  # Документация проекта
+│   ├── run.py                     # Запуск системы
+│   ├── safe_tde_setup.py          # Безопасная настройка TDE
+│   ├── setup.py                   # Комплексная настройка системы
+│   ├── setup_replication.py       # Настройка репликации
+│   ├── setup_tde.py               # Настройка TDE
+│   ├── todo.md                    # План развития
+│   └── web_interface.html         # Веб-интерфейс системы
+
 ##  Быстрый старт
 
 ### 1. Клонирование репозитория
