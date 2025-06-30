@@ -1,67 +1,45 @@
-plantuml
-@startuml
-!define table(x) entity x << (T,#FFAAAA) >>
-!define primary_key(x) <b>x</b>
-!define foreign_key(x) <i>x</i>
+@startuml DFD_Level_0
+!define RECTANGLE class
+!define EXTERNAL entity
+!define PROCESS circle
 
-table(patients) {
-  primary_key(id): INTEGER
-  first_name: VARCHAR(100)
-  last_name: VARCHAR(100)
-  middle_name: VARCHAR(100)
-  birth_date: DATE
-  gender: CHAR(1)
-  phone: VARCHAR(20)
-  email: VARCHAR(100)
-  address: TEXT
-  created_at: TIMESTAMP
-  updated_at: TIMESTAMP
+skinparam entity {
+  BackgroundColor LightBlue
+  BorderColor Navy
 }
 
-table(doctors) {
-  primary_key(id): INTEGER
-  first_name: VARCHAR(100)
-  last_name: VARCHAR(100)
-  middle_name: VARCHAR(100)
-  specialization: VARCHAR(200)
-  license_number: VARCHAR(50)
-  phone: VARCHAR(20)
-  email: VARCHAR(100)
-  created_at: TIMESTAMP
+skinparam circle {
+  BackgroundColor LightGreen
+  BorderColor DarkGreen
 }
 
-table(appointments) {
-  primary_key(id): INTEGER
-  foreign_key(patient_id): INTEGER
-  foreign_key(doctor_id): INTEGER
-  appointment_date: TIMESTAMP
-  status: VARCHAR(20)
-  created_at: TIMESTAMP
-}
+EXTERNAL "Пациент" as patient
+EXTERNAL "Врач" as doctor  
+EXTERNAL "Главврач" as chief
+EXTERNAL "Регистратор" as registrar
+EXTERNAL "Администратор БД" as admin
 
-table(medical_records) {
-  primary_key(id): INTEGER
-  foreign_key(appointment_id): INTEGER
-  diagnosis_encrypted: BYTEA
-  diagnosis_iv: BYTEA
-  complaints: TEXT
-  examination_results: TEXT
-  created_at: TIMESTAMP
-}
+PROCESS "Система\nэлектронных\nмедицинских\nкарт" as system
 
-table(prescriptions) {
-  primary_key(id): INTEGER
-  foreign_key(medical_record_id): INTEGER
-  medication_name: VARCHAR(200)
-  dosage: VARCHAR(100)
-  frequency: VARCHAR(100)
-  duration: VARCHAR(100)
-  notes: TEXT
-}
+patient --> system : "Личные данные\nЖалобы"
+system --> patient : "Расписание приемов\nРезультаты"
 
-patients ||--o{ appointments
-doctors ||--o{ appointments
-appointments ||--|| medical_records
-medical_records ||--o{ prescriptions
+doctor --> system : "Данные осмотра\nДиагноз\nНазначения"
+system --> doctor : "История болезни\nИнформация о пациенте"
+
+chief --> system : "Запросы отчетности"
+system --> chief : "Статистика\nОтчеты"
+
+registrar --> system : "Регистрация пациентов\nЗапись на прием"
+system --> registrar : "Расписание\nИнформация о пациентах"
+
+admin --> system : "Настройки\nРезервные копии"
+system --> admin : "Логи системы\nСтатус БД"
+
+note right of system
+  Центральная система обработки
+  медицинских данных с шифрованием
+  диагнозов и репликацией БД
+end note
 
 @enduml
