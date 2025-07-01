@@ -1,45 +1,83 @@
-@startuml DFD_Level_0
-!define RECTANGLE class
-!define EXTERNAL entity
-!define PROCESS circle
+@startuml
+title ER-диаграмма: Система электронных медицинских карт
 
-skinparam entity {
-  BackgroundColor LightBlue
-  BorderColor Navy
+entity "Пациенты\n(patients)" as patients {
+  * id : serial
+  --
+  first_name : varchar
+  last_name : varchar
+  middle_name : varchar
+  birth_date : date
+  gender : char(1)
+  phone : varchar
+  email : varchar
+  address : text
+  created_at : timestamp
+  updated_at : timestamp
 }
 
-skinparam circle {
-  BackgroundColor LightGreen
-  BorderColor DarkGreen
+entity "Врачи\n(doctors)" as doctors {
+  * id : serial
+  --
+  first_name : varchar
+  last_name : varchar
+  middle_name : varchar
+  specialization : varchar
+  license_number : varchar
+  phone : varchar
+  email : varchar
+  created_at : timestamp
 }
 
-EXTERNAL "Пациент" as patient
-EXTERNAL "Врач" as doctor  
-EXTERNAL "Главврач" as chief
-EXTERNAL "Регистратор" as registrar
-EXTERNAL "Администратор БД" as admin
+entity "Приёмы\n(appointments)" as appointments {
+  * id : serial
+  --
+  patient_id : int
+  doctor_id : int
+  appointment_date : timestamp
+  status : varchar
+  created_at : timestamp
+}
 
-PROCESS "Система\nэлектронных\nмедицинских\nкарт" as system
+entity "Медкарты\n(medical_records)" as records {
+  * id : serial
+  --
+  appointment_id : int
+  diagnosis_encrypted : bytea
+  diagnosis_iv : bytea
+  complaints : text
+  examination_results : text
+  created_at : timestamp
+}
 
-patient --> system : "Личные данные\nЖалобы"
-system --> patient : "Расписание приемов\nРезультаты"
+entity "Назначения\n(prescriptions)" as prescriptions {
+  * id : serial
+  --
+  medical_record_id : int
+  medication_name : varchar
+  dosage : varchar
+  frequency : varchar
+  duration : varchar
+  notes : text
+}
 
-doctor --> system : "Данные осмотра\nДиагноз\nНазначения"
-system --> doctor : "История болезни\nИнформация о пациенте"
+entity "Аудит пациентов\n(patients_audit)" as audit {
+  * audit_id : serial
+  --
+  patient_id : int
+  operation : char(1)
+  old_data : jsonb
+  new_data : jsonb
+  changed_by : text
+  changed_at : timestamp
+}
 
-chief --> system : "Запросы отчетности"
-system --> chief : "Статистика\nОтчеты"
+' ───── СВЯЗИ ─────
 
-registrar --> system : "Регистрация пациентов\nЗапись на прием"
-system --> registrar : "Расписание\nИнформация о пациентах"
-
-admin --> system : "Настройки\nРезервные копии"
-system --> admin : "Логи системы\nСтатус БД"
-
-note right of system
-  Центральная система обработки
-  медицинских данных с шифрованием
-  диагнозов и репликацией БД
-end note
+patients ||--o{ appointments : "записан на приём"
+doctors  ||--o{ appointments : "проводит приём"
+appointments ||--|| records : "имеет медкарту"
+records ||--o{ prescriptions : "содержит назначения"
+patients ||--o{ audit : "аудит изменений"
 
 @enduml
