@@ -76,10 +76,10 @@ class SQLInjectionTester:
                         SELECT id FROM patients WHERE last_name = %s LIMIT 1
                     """, (payload,))
                     results = cursor.fetchall()
-                    logger.warning(f"⚠️ НЕОЖИДАННО: {description} - запрос выполнился")
+                    logger.warning(f"⚠️ Неожиданно: {description} - запрос выполнился")
                     vulnerable_count += 1
             except Exception as e:
-                logger.info(f"🛡️ ЗАЩИТА БД: {description} - отклонено драйвером PostgreSQL")
+                logger.info(f"🛡️ Защита бд: {description} - отклонено драйвером PostgreSQL")
                 logger.info(f"   Сообщение: {str(e)}")
                 protected_count += 1
         
@@ -143,9 +143,9 @@ class SQLInjectionTester:
         ]
         
         for scenario in attack_scenarios:
-            logger.info(f"\n🎯 {scenario['name']}:")
+            logger.info(f"\n {scenario['name']}:")
             logger.info(f"   Payload: {scenario['payload']}")
-            logger.error(f"   ❌ Небезопасно: {scenario['unsafe_result']}")
+            logger.error(f"  ❌ Небезопасно: {scenario['unsafe_result']}")
             logger.info(f"   ✅ Безопасно: {scenario['safe_result']} // payload как строка")
     
     def generate_report(self):

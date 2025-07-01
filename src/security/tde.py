@@ -832,7 +832,7 @@ def test_tde():
         print(f"      Поля: {', '.join(details['fields'])}")
         print(f"      Чувствительность: {details['sensitivity']}")
     
-    print(f"\n✅ ВСЕ ТЕСТЫ TDE ПРОЙДЕНЫ УСПЕШНО!")
+    print(f"\n✅ Все тесты TDE пройдены успешно!")
     return True
 
 
@@ -877,7 +877,6 @@ def enable_tde_for_existing_connection():
     except Exception as e:
         print(f"❌ Ошибка интеграции TDE: {e}")
         return False
-
 
 # Утилиты для администрирования TDE
 class TDEAdmin:
@@ -960,7 +959,7 @@ class TDEAdmin:
                     total_migrated += migrated_count
                     print(f"   ✅ Мигрировано {migrated_count} записей")
                 
-                print(f"\n🎉 МИГРАЦИЯ ЗАВЕРШЕНА!")
+                print(f"\nМиграция завершена!")
                 print(f"   Всего мигрировано: {total_migrated} записей")
                 print(f"   TDE активирован для всех чувствительных данных")
                 
@@ -972,7 +971,7 @@ class TDEAdmin:
     
     def verify_encryption(self):
         """Проверка корректности шифрования в БД"""
-        print("🔍 ПРОВЕРКА ШИФРОВАНИЯ В БД")
+        print("🔍 Проверка шифрования бд")
         print("=" * 40)
         
         from src.database.connection import db
@@ -1119,12 +1118,7 @@ def main_tde_setup():
         if test_tde():
             print("✅ Все тесты пройдены")
         
-        print("\n🎉 TDE НАСТРОЕН УСПЕШНО!")
-        print("\n📋 Следующие шаги:")
-        print("   1. Выполните миграцию данных: python -c \"from src.security.tde_complete import TDEAdmin; TDEAdmin().migrate_existing_data()\"")
-        print("   2. Проверьте шифрование: python -c \"from src.security.tde_complete import TDEAdmin; TDEAdmin().verify_encryption()\"") 
-        print("   3. Запустите систему: python run.py")
-        
+        print("\n🎉 TDE Настроен успешно!")
         return True
         
     except Exception as e:
