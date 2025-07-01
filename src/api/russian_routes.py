@@ -28,39 +28,44 @@ TDE_ENABLED = os.getenv('TDE_ENABLED', 'False').lower() == 'true'
 
 if TDE_ENABLED:
     try:
-        from src.security.encryption import AESEncryption
-        encryption = AESEncryption()
+        from src.security.tde import TDEManager
+        tde_manager = TDEManager()
         logger.info("🔒 TDE включен и готов к работе")
     except Exception as e:
         logger.warning(f"⚠️ TDE не удалось инициализировать: {e}")
         logger.info("📖 Работаем без TDE")
         TDE_ENABLED = False
-        encryption = None
+        tde_manager = None
 else:
     logger.info("📖 TDE отключен в настройках")
-    encryption = None
+    tde_manager = None
 
-def safe_encrypt(data):
-    """Безопасное шифрование с обработкой ошибок"""
-    if not TDE_ENABLED or not encryption or not data:
+def safe_encrypt_field(table_name, field_name, value):
+    """Безопасное шифрование поля с обработкой пустых значений"""
+    if not TDE_ENABLED or not tde_manager:
+        return None, None
+    
+    # Если значение пустое или None, не шифруем
+    if not value or str(value).strip() == '':
         return None, None
     
     try:
-        return encryption.encrypt(str(data))
+        return tde_manager.encrypt_field(table_name, field_name, str(value))
     except Exception as e:
-        logger.error(f"Ошибка шифрования: {e}")
+        logger.error(f"Ошибка шифрования {table_name}.{field_name}: {e}")
+        # Возвращаем None вместо исключения, чтобы не сломать создание записи
         return None, None
 
-def safe_decrypt(ciphertext, iv):
-    """Безопасная расшифровка с обработкой ошибок"""
-    if not TDE_ENABLED or not encryption or not ciphertext or not iv:
+def safe_decrypt_field(table_name, field_name, ciphertext, iv):
+    """Безопасная расшифровка поля с обработкой ошибок"""
+    if not TDE_ENABLED or not tde_manager or not ciphertext or not iv:
         return None
     
     try:
-        return encryption.decrypt(bytes(ciphertext), bytes(iv))
+        return tde_manager.decrypt_field(table_name, field_name, ciphertext, iv)
     except Exception as e:
-        logger.error(f"Ошибка расшифровки: {e}")
-        return None
+        logger.error(f"Ошибка расшифровки {table_name}.{field_name}: {e}")
+        return f"[ОШИБКА РАСШИФРОВКИ]"
 
 def format_patient_data(patient):
     """Форматирование данных пациента для русского интерфейса"""
@@ -93,10 +98,24 @@ def format_patient_data(patient):
             logger.error(f"Error formatting birth_date: {e}")
             pass
     
+    # Расшифровываем и форматируем телефон
+    if TDE_ENABLED and 'phone_encrypted' in formatted and 'phone_iv' in formatted:
+        decrypted_phone = safe_decrypt_field('patients', 'phone', 
+                                           formatted.get('phone_encrypted'), 
+                                           formatted.get('phone_iv'))
+        if decrypted_phone and decrypted_phone != "[ОШИБКА РАСШИФРОВКИ]":
+            formatted['phone'] = decrypted_phone
+        else:
+            formatted['phone'] = "не указан"
+        
+        # Удаляем зашифрованные поля из вывода
+        formatted.pop('phone_encrypted', None)
+        formatted.pop('phone_iv', None)
+    
     # Форматируем телефон
     if 'phone' in formatted:
         phone = formatted['phone']
-        if phone and phone != "не указан":
+        if phone and phone != "не указан" and not phone.startswith("[ОШИБКА"):
             digits = ''.join(filter(str.isdigit, phone))
             if len(digits) == 11 and digits.startswith('7'):
                 formatted['phone'] = f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
@@ -105,10 +124,38 @@ def format_patient_data(patient):
         else:
             formatted['phone'] = "не указан"
     
+    # Расшифровываем и форматируем email
+    if TDE_ENABLED and 'email_encrypted' in formatted and 'email_iv' in formatted:
+        decrypted_email = safe_decrypt_field('patients', 'email', 
+                                           formatted.get('email_encrypted'), 
+                                           formatted.get('email_iv'))
+        if decrypted_email and decrypted_email != "[ОШИБКА РАСШИФРОВКИ]":
+            formatted['email'] = decrypted_email
+        else:
+            formatted['email'] = "не указан"
+        
+        # Удаляем зашифрованные поля из вывода
+        formatted.pop('email_encrypted', None)
+        formatted.pop('email_iv', None)
+    
     # Форматируем email
     if 'email' in formatted:
-        if not formatted['email']:
+        if not formatted['email'] or formatted['email'].startswith("[ОШИБКА"):
             formatted['email'] = "не указан"
+    
+    # Расшифровываем и форматируем адрес
+    if TDE_ENABLED and 'address_encrypted' in formatted and 'address_iv' in formatted:
+        decrypted_address = safe_decrypt_field('patients', 'address', 
+                                             formatted.get('address_encrypted'), 
+                                             formatted.get('address_iv'))
+        if decrypted_address and decrypted_address != "[ОШИБКА РАСШИФРОВКИ]":
+            formatted['address'] = decrypted_address
+        else:
+            formatted['address'] = "не указан"
+        
+        # Удаляем зашифрованные поля из вывода
+        formatted.pop('address_encrypted', None)
+        formatted.pop('address_iv', None)
     
     # Форматируем пол
     if 'gender' in formatted:
@@ -220,13 +267,26 @@ def get_patients():
             cursor.execute("SELECT COUNT(*) as total FROM patients")
             total = cursor.fetchone()['total']
             
-            cursor.execute("""
-                SELECT id, first_name, last_name, middle_name, 
-                       birth_date, gender, phone, email
-                FROM patients
-                ORDER BY last_name, first_name
-                LIMIT %s OFFSET %s
-            """, (per_page, offset))
+            # Выбираем все поля включая зашифрованные
+            if TDE_ENABLED:
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name, 
+                           birth_date, gender, phone, email, address,
+                           phone_encrypted, phone_iv, 
+                           email_encrypted, email_iv,
+                           address_encrypted, address_iv
+                    FROM patients
+                    ORDER BY last_name, first_name
+                    LIMIT %s OFFSET %s
+                """, (per_page, offset))
+            else:
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name, 
+                           birth_date, gender, phone, email, address
+                    FROM patients
+                    ORDER BY last_name, first_name
+                    LIMIT %s OFFSET %s
+                """, (per_page, offset))
             
             patients = cursor.fetchall()
             formatted_patients = [format_patient_data(patient) for patient in patients]
@@ -242,22 +302,33 @@ def get_patients():
             })
     except Exception as e:
         logger.error(f"Get patients error: {e}")
-        return jsonify({'error': f'Ошибка создания медкарты: {str(e)}'}), 500
+        return jsonify({'error': f'Ошибка получения пациентов: {str(e)}'}), 500
 
 @app.route('/api/patients/<int:patient_id>', methods=['GET'])
 def get_patient(patient_id):
     """Получить данные пациента по ID"""
     try:
         with db.get_cursor() as cursor:
-            cursor.execute("""
-                SELECT p.*, 
-                       COUNT(DISTINCT a.id) as total_appointments,
-                       MAX(a.appointment_date) as last_appointment
-                FROM patients p
-                LEFT JOIN appointments a ON p.id = a.patient_id
-                WHERE p.id = %s
-                GROUP BY p.id
-            """, (patient_id,))
+            if TDE_ENABLED:
+                cursor.execute("""
+                    SELECT p.*, 
+                           COUNT(DISTINCT a.id) as total_appointments,
+                           MAX(a.appointment_date) as last_appointment
+                    FROM patients p
+                    LEFT JOIN appointments a ON p.id = a.patient_id
+                    WHERE p.id = %s
+                    GROUP BY p.id
+                """, (patient_id,))
+            else:
+                cursor.execute("""
+                    SELECT p.*, 
+                           COUNT(DISTINCT a.id) as total_appointments,
+                           MAX(a.appointment_date) as last_appointment
+                    FROM patients p
+                    LEFT JOIN appointments a ON p.id = a.patient_id
+                    WHERE p.id = %s
+                    GROUP BY p.id
+                """, (patient_id,))
             
             patient = cursor.fetchone()
             
@@ -280,7 +351,7 @@ def get_patient(patient_id):
 
 @app.route('/api/patients', methods=['POST'])
 def create_patient():
-    """Создать нового пациента с улучшенной обработкой ошибок"""
+    """Создать нового пациента с поддержкой TDE"""
     try:
         data = request.get_json()
         if not data:
@@ -312,25 +383,72 @@ def create_patient():
         logger.info(f"Creating patient with data: {clean_data}")
         
         with db.get_cursor() as cursor:
+            # Подготавливаем данные для вставки
             insert_data = {
                 'first_name': clean_data.get('first_name'),
                 'last_name': clean_data.get('last_name'),
                 'middle_name': clean_data.get('middle_name'),
                 'birth_date': clean_data.get('birth_date'),
-                'gender': clean_data.get('gender'),
-                'phone': clean_data.get('phone'),
-                'email': clean_data.get('email'),
-                'address': clean_data.get('address')
+                'gender': clean_data.get('gender')
             }
             
-            cursor.execute("""
-                INSERT INTO patients 
-                (first_name, last_name, middle_name, birth_date, 
-                 gender, phone, email, address)
-                VALUES (%(first_name)s, %(last_name)s, %(middle_name)s, 
-                        %(birth_date)s, %(gender)s, %(phone)s, %(email)s, %(address)s)
-                RETURNING id, created_at
-            """, insert_data)
+            # Обрабатываем поля с TDE шифрованием
+            if TDE_ENABLED:
+                # Шифруем телефон
+                if clean_data.get('phone'):
+                    phone_encrypted, phone_iv = safe_encrypt_field('patients', 'phone', clean_data['phone'])
+                    insert_data['phone_encrypted'] = phone_encrypted
+                    insert_data['phone_iv'] = phone_iv
+                    # НЕ сохраняем открытый телефон если TDE включен
+                else:
+                    insert_data['phone_encrypted'] = None
+                    insert_data['phone_iv'] = None
+                
+                # Шифруем email
+                if clean_data.get('email'):
+                    email_encrypted, email_iv = safe_encrypt_field('patients', 'email', clean_data['email'])
+                    insert_data['email_encrypted'] = email_encrypted
+                    insert_data['email_iv'] = email_iv
+                else:
+                    insert_data['email_encrypted'] = None
+                    insert_data['email_iv'] = None
+                
+                # Шифруем адрес
+                if clean_data.get('address'):
+                    address_encrypted, address_iv = safe_encrypt_field('patients', 'address', clean_data['address'])
+                    insert_data['address_encrypted'] = address_encrypted
+                    insert_data['address_iv'] = address_iv
+                else:
+                    insert_data['address_encrypted'] = None
+                    insert_data['address_iv'] = None
+                
+                # SQL для вставки с TDE полями
+                cursor.execute("""
+                    INSERT INTO patients 
+                    (first_name, last_name, middle_name, birth_date, gender, 
+                     phone_encrypted, phone_iv, email_encrypted, email_iv, 
+                     address_encrypted, address_iv)
+                    VALUES (%(first_name)s, %(last_name)s, %(middle_name)s, 
+                            %(birth_date)s, %(gender)s, %(phone_encrypted)s, %(phone_iv)s,
+                            %(email_encrypted)s, %(email_iv)s, %(address_encrypted)s, %(address_iv)s)
+                    RETURNING id, created_at
+                """, insert_data)
+            else:
+                # Без TDE - обычная вставка
+                insert_data.update({
+                    'phone': clean_data.get('phone'),
+                    'email': clean_data.get('email'),
+                    'address': clean_data.get('address')
+                })
+                
+                cursor.execute("""
+                    INSERT INTO patients 
+                    (first_name, last_name, middle_name, birth_date, 
+                     gender, phone, email, address)
+                    VALUES (%(first_name)s, %(last_name)s, %(middle_name)s, 
+                            %(birth_date)s, %(gender)s, %(phone)s, %(email)s, %(address)s)
+                    RETURNING id, created_at
+                """, insert_data)
             
             result = cursor.fetchone()
             
@@ -349,7 +467,7 @@ def create_patient():
 # === ПОИСК ===
 @app.route('/api/search')
 def search():
-    """Универсальный поиск"""
+    """Универсальный поиск с поддержкой TDE"""
     query = request.args.get('q', '').strip()
     search_type = request.args.get('type', 'patients')
     
@@ -385,17 +503,33 @@ def search():
             return jsonify({'error': 'Запрос слишком короткий', 'patients': []}), 200
         
         with db.get_cursor() as cursor:
-            cursor.execute("""
-                SELECT id, first_name, last_name, middle_name, 
-                       birth_date, gender, phone, email
-                FROM patients
-                WHERE last_name ILIKE %s 
-                   OR first_name ILIKE %s 
-                   OR middle_name ILIKE %s
-                   OR phone LIKE %s
-                ORDER BY last_name, first_name
-                LIMIT 50
-            """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'))
+            if TDE_ENABLED:
+                # При TDE поиск только по незашифрованным полям
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name, 
+                           birth_date, gender, phone, email, address,
+                           phone_encrypted, phone_iv, 
+                           email_encrypted, email_iv,
+                           address_encrypted, address_iv
+                    FROM patients
+                    WHERE last_name ILIKE %s 
+                       OR first_name ILIKE %s 
+                       OR middle_name ILIKE %s
+                    ORDER BY last_name, first_name
+                    LIMIT 50
+                """, (f'%{query}%', f'%{query}%', f'%{query}%'))
+            else:
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name, 
+                           birth_date, gender, phone, email
+                    FROM patients
+                    WHERE last_name ILIKE %s 
+                       OR first_name ILIKE %s 
+                       OR middle_name ILIKE %s
+                       OR phone LIKE %s
+                    ORDER BY last_name, first_name
+                    LIMIT 50
+                """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'))
             
             patients = cursor.fetchall()
             formatted_patients = [format_patient_data(patient) for patient in patients]
@@ -600,6 +734,17 @@ def get_medical_records():
                     formatted['appointment_date']
                 )
                 
+                # Расшифровываем диагноз если он зашифрован
+                if TDE_ENABLED and formatted.get('diagnosis_encrypted') and formatted.get('diagnosis_iv'):
+                    decrypted_diagnosis = safe_decrypt_field('medical_records', 'diagnosis', 
+                                                          formatted['diagnosis_encrypted'], 
+                                                          formatted['diagnosis_iv'])
+                    if decrypted_diagnosis and decrypted_diagnosis != "[ОШИБКА РАСШИФРОВКИ]":
+                        formatted['diagnosis'] = decrypted_diagnosis
+                    else:
+                        formatted['diagnosis'] = "Ошибка расшифровки диагноза"
+                
+                # Удаляем зашифрованные поля из вывода
                 if 'diagnosis_encrypted' in formatted:
                     del formatted['diagnosis_encrypted']
                 if 'diagnosis_iv' in formatted:
@@ -644,12 +789,12 @@ def get_medical_record_with_decryption(record_id):
             
             formatted_record = dict(record)
             
+            # Расшифровываем диагноз
             if record['diagnosis_encrypted'] and record['diagnosis_iv']:
                 try:
-                    decrypted = safe_decrypt(
-                        bytes(record['diagnosis_encrypted']),
-                        bytes(record['diagnosis_iv'])
-                    )
+                    decrypted = safe_decrypt_field('medical_records', 'diagnosis',
+                                                 bytes(record['diagnosis_encrypted']),
+                                                 bytes(record['diagnosis_iv']))
                     formatted_record['diagnosis'] = decrypted or "Ошибка расшифровки"
                 except Exception as e:
                     logger.error(f"Decryption error: {e}")
@@ -696,9 +841,9 @@ def create_medical_record():
         diagnosis_encrypted = None
         diagnosis_iv = None
         
-        if TDE_ENABLED and encryption:
+        if TDE_ENABLED and tde_manager:
             try:
-                diagnosis_encrypted, diagnosis_iv = safe_encrypt(data['diagnosis'])
+                diagnosis_encrypted, diagnosis_iv = safe_encrypt_field('medical_records', 'diagnosis', data['diagnosis'])
                 logger.info("Диагноз зашифрован с TDE")
             except Exception as e:
                 logger.error(f"Ошибка шифрования диагноза: {e}")
@@ -728,19 +873,33 @@ def create_medical_record():
                 WHERE id = %s
             """, (data['appointment_id'],))
             
-            cursor.execute("""
-                INSERT INTO medical_records 
-                (appointment_id, diagnosis_encrypted, diagnosis_iv, 
-                 complaints, examination_results)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id, created_at
-            """, (
-                data['appointment_id'],
-                diagnosis_encrypted,
-                diagnosis_iv,
-                data.get('complaints'),
-                data.get('examination_results')
-            ))
+            if TDE_ENABLED:
+                # Вставка с зашифрованным диагнозом
+                cursor.execute("""
+                    INSERT INTO medical_records 
+                    (appointment_id, diagnosis_encrypted, diagnosis_iv, 
+                     complaints, examination_results)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, created_at
+                """, (
+                    data['appointment_id'],
+                    diagnosis_encrypted,
+                    diagnosis_iv,
+                    data.get('complaints'),
+                    data.get('examination_results')
+                ))
+            else:
+                # Вставка без шифрования
+                cursor.execute("""
+                    INSERT INTO medical_records 
+                    (appointment_id, complaints, examination_results)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, created_at
+                """, (
+                    data['appointment_id'],
+                    data.get('complaints'),
+                    data.get('examination_results')
+                ))
             
             result = cursor.fetchone()
             record_id = result['id']
@@ -807,7 +966,244 @@ def get_statistics():
         logger.error(f"Get statistics error: {e}")
         return jsonify({'error': f'Ошибка получения статистики: {str(e)}'}), 500
 
-# Обработка ошибок
+# === ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ===
+
+def clear_quick_search():
+    """Очистка быстрого поиска"""
+    return jsonify({'message': 'Поиск очищен'})
+
+def clear_patient_search():
+    """Очистка поиска пациентов"""
+    return jsonify({'message': 'Поиск пациентов очищен'})
+
+def load_dashboard_data():
+    """Загрузка данных для дашборда"""
+    try:
+        stats = get_statistics()
+        return stats
+    except Exception as e:
+        logger.error(f"Load dashboard data error: {e}")
+        return jsonify({'error': f'Ошибка загрузки данных: {str(e)}'}), 500
+
+# === ВСПОМОГАТЕЛЬНЫЕ МАРШРУТЫ ===
+
+@app.route('/api/doctors', methods=['GET'])
+def get_doctors():
+    """Получить список врачей"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT id, first_name, last_name, middle_name, 
+                       specialization, license_number, phone, email,
+                       created_at
+                FROM doctors
+                ORDER BY last_name, first_name
+            """)
+            doctors = cursor.fetchall()
+            
+            formatted_doctors = []
+            for doctor in doctors:
+                formatted = dict(doctor)
+                
+                # Форматируем телефон
+                if formatted['phone']:
+                    digits = ''.join(filter(str.isdigit, formatted['phone']))
+                    if len(digits) == 11:
+                        formatted['phone'] = f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+                else:
+                    formatted['phone'] = "не указан"
+                
+                # Форматируем email
+                if not formatted['email']:
+                    formatted['email'] = "не указан"
+                
+                formatted_doctors.append(formatted)
+            
+            return jsonify({'doctors': formatted_doctors})
+            
+    except Exception as e:
+        logger.error(f"Get doctors error: {e}")
+        return jsonify({'error': f'Ошибка получения врачей: {str(e)}'}), 500
+
+@app.route('/api/doctors/<int:doctor_id>', methods=['GET'])
+def get_doctor(doctor_id):
+    """Получить данные врача по ID"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT d.*, 
+                       COUNT(DISTINCT a.id) as total_appointments
+                FROM doctors d
+                LEFT JOIN appointments a ON d.id = a.doctor_id
+                WHERE d.id = %s
+                GROUP BY d.id
+            """, (doctor_id,))
+            
+            doctor = cursor.fetchone()
+            
+            if not doctor:
+                return jsonify({'error': 'Врач не найден'}), 404
+            
+            formatted_doctor = dict(doctor)
+            
+            # Форматируем телефон
+            if formatted_doctor['phone']:
+                digits = ''.join(filter(str.isdigit, formatted_doctor['phone']))
+                if len(digits) == 11:
+                    formatted_doctor['phone'] = f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+            else:
+                formatted_doctor['phone'] = "не указан"
+            
+            # Форматируем email
+            if not formatted_doctor['email']:
+                formatted_doctor['email'] = "не указан"
+                
+            return jsonify(formatted_doctor)
+            
+    except Exception as e:
+        logger.error(f"Get doctor error: {e}")
+        return jsonify({'error': f'Ошибка получения врача: {str(e)}'}), 500
+
+# === ДОПОЛНИТЕЛЬНЫЕ API МАРШРУТЫ ===
+
+@app.route('/api/patients/list', methods=['GET'])
+def get_patients_list():
+    """Получить упрощенный список пациентов для выпадающих списков"""
+    try:
+        with db.get_cursor() as cursor:
+            if TDE_ENABLED:
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name,
+                           phone_encrypted, phone_iv,
+                           email_encrypted, email_iv
+                    FROM patients
+                    ORDER BY last_name, first_name
+                    LIMIT 1000
+                """)
+            else:
+                cursor.execute("""
+                    SELECT id, first_name, last_name, middle_name, phone, email
+                    FROM patients
+                    ORDER BY last_name, first_name
+                    LIMIT 1000
+                """)
+            
+            patients = cursor.fetchall()
+            
+            formatted_patients = []
+            for patient in patients:
+                formatted = {
+                    'id': patient['id'],
+                    'first_name': patient['first_name'],
+                    'last_name': patient['last_name'],
+                    'middle_name': patient['middle_name']
+                }
+                
+                # Расшифровываем контактные данные если нужно
+                if TDE_ENABLED and patient.get('phone_encrypted'):
+                    decrypted_phone = safe_decrypt_field('patients', 'phone', 
+                                                       patient['phone_encrypted'], 
+                                                       patient['phone_iv'])
+                    formatted['phone'] = decrypted_phone if decrypted_phone else "не указан"
+                else:
+                    formatted['phone'] = patient.get('phone', "не указан")
+                
+                if TDE_ENABLED and patient.get('email_encrypted'):
+                    decrypted_email = safe_decrypt_field('patients', 'email', 
+                                                       patient['email_encrypted'], 
+                                                       patient['email_iv'])
+                    formatted['email'] = decrypted_email if decrypted_email else "не указан"
+                else:
+                    formatted['email'] = patient.get('email', "не указан")
+                
+                formatted_patients.append(formatted)
+            
+            return jsonify({
+                'patients': formatted_patients,
+                'count': len(formatted_patients)
+            })
+            
+    except Exception as e:
+        logger.error(f"Get patients list error: {e}")
+        return jsonify({'error': f'Ошибка получения списка пациентов: {str(e)}'}), 500
+
+@app.route('/api/doctors/list', methods=['GET'])
+def get_doctors_list():
+    """Получить упрощенный список врачей для выпадающих списков"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT id, first_name, last_name, middle_name, specialization
+                FROM doctors
+                ORDER BY specialization, last_name, first_name
+            """)
+            
+            doctors = cursor.fetchall()
+            
+            formatted_doctors = []
+            for doctor in doctors:
+                formatted_doctors.append({
+                    'id': doctor['id'],
+                    'first_name': doctor['first_name'],
+                    'last_name': doctor['last_name'],
+                    'middle_name': doctor['middle_name'],
+                    'specialization': doctor['specialization']
+                })
+            
+            return jsonify({
+                'doctors': formatted_doctors,
+                'count': len(formatted_doctors)
+            })
+            
+    except Exception as e:
+        logger.error(f"Get doctors list error: {e}")
+        return jsonify({'error': f'Ошибка получения списка врачей: {str(e)}'}), 500
+
+@app.route('/api/appointments/completed-without-records', methods=['GET'])
+def get_completed_appointments_without_records():
+    """Получить завершённые приёмы без медицинских записей для создания медкарт"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT a.id, a.appointment_date,
+                       p.first_name || ' ' || p.last_name || 
+                       COALESCE(' ' || p.middle_name, '') as patient_name,
+                       d.first_name || ' ' || d.last_name || 
+                       COALESCE(' ' || d.middle_name, '') as doctor_name,
+                       d.specialization
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                JOIN doctors d ON a.doctor_id = d.id
+                LEFT JOIN medical_records mr ON a.id = mr.appointment_id
+                WHERE a.status = 'completed' 
+                AND mr.id IS NULL
+                ORDER BY a.appointment_date DESC
+                LIMIT 200
+            """)
+            
+            appointments = cursor.fetchall()
+            
+            formatted_appointments = []
+            for appointment in appointments:
+                formatted_appointments.append({
+                    'id': appointment['id'],
+                    'patient_name': appointment['patient_name'].strip(),
+                    'doctor_name': appointment['doctor_name'].strip(),
+                    'specialization': appointment['specialization'],
+                    'appointment_date': format_datetime_russian(appointment['appointment_date'])
+                })
+            
+            return jsonify({
+                'appointments': formatted_appointments,
+                'count': len(formatted_appointments)
+            })
+            
+    except Exception as e:
+        logger.error(f"Get completed appointments without records error: {e}")
+        return jsonify({'error': f'Ошибка получения приёмов: {str(e)}'}), 500
+
+# === ОБРАБОТЧИКИ ОШИБОК ===
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Endpoint не найден'}), 404
@@ -817,7 +1213,143 @@ def internal_error(error):
     logger.error(f"Internal error: {error}")
     return jsonify({'error': 'Внутренняя ошибка сервера'}), 500
 
+@app.errorhandler(400)
+def bad_request(error):
+    return jsonify({'error': 'Неверный запрос'}), 400
+
+@app.errorhandler(405)
+def method_not_allowed(error):
+    return jsonify({'error': 'Метод не разрешен'}), 405
+
+# === ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ ===
+
+def validate_patient_data(data):
+    """Валидация данных пациента"""
+    errors = []
+    
+    if not data.get('first_name'):
+        errors.append('Имя обязательно')
+    if not data.get('last_name'):
+        errors.append('Фамилия обязательна')
+    if not data.get('birth_date'):
+        errors.append('Дата рождения обязательна')
+    if not data.get('gender') or data['gender'] not in ['M', 'F']:
+        errors.append('Пол должен быть M или F')
+    
+    if data.get('email') and '@' not in data['email']:
+        errors.append('Неверный формат email')
+    
+    if data.get('phone'):
+        digits = ''.join(filter(str.isdigit, data['phone']))
+        if len(digits) < 10:
+            errors.append('Неверный формат телефона')
+    
+    return errors
+
+def format_validation_errors(errors):
+    """Форматирование ошибок валидации"""
+    if not errors:
+        return None
+    
+    return {
+        'error': 'Ошибки валидации',
+        'details': errors,
+        'count': len(errors)
+    }
+
+# === УТИЛИТЫ ДЛЯ ОТЛАДКИ ===
+
+@app.route('/api/debug/tde-status', methods=['GET'])
+def debug_tde_status():
+    """Отладочная информация о статусе TDE"""
+    if not TDE_ENABLED:
+        return jsonify({
+            'tde_enabled': False,
+            'message': 'TDE отключен'
+        })
+    
+    try:
+        info = {
+            'tde_enabled': TDE_ENABLED,
+            'tde_manager_initialized': tde_manager is not None,
+            'encryption_key_exists': os.path.exists(os.getenv('ENCRYPTION_KEY_FILE', '.encryption_key'))
+        }
+        
+        if tde_manager:
+            info['encryption_info'] = tde_manager.get_encryption_info()
+        
+        return jsonify(info)
+        
+    except Exception as e:
+        return jsonify({
+            'tde_enabled': TDE_ENABLED,
+            'error': str(e)
+        })
+
+@app.route('/api/debug/database-structure', methods=['GET'])
+def debug_database_structure():
+    """Отладочная информация о структуре БД"""
+    try:
+        with db.get_cursor() as cursor:
+            # Проверяем TDE поля в таблице patients
+            cursor.execute("""
+                SELECT column_name, data_type 
+                FROM information_schema.columns 
+                WHERE table_name = 'patients' 
+                AND (column_name LIKE '%_encrypted' OR column_name LIKE '%_iv')
+                ORDER BY column_name
+            """)
+            
+            tde_columns = cursor.fetchall()
+            
+            # Проверяем обычные поля
+            cursor.execute("""
+                SELECT column_name, data_type, is_nullable
+                FROM information_schema.columns 
+                WHERE table_name = 'patients' 
+                AND column_name NOT LIKE '%_encrypted' 
+                AND column_name NOT LIKE '%_iv'
+                ORDER BY ordinal_position
+            """)
+            
+            regular_columns = cursor.fetchall()
+            
+            return jsonify({
+                'table': 'patients',
+                'tde_columns': [dict(col) for col in tde_columns],
+                'regular_columns': [dict(col) for col in regular_columns],
+                'tde_columns_count': len(tde_columns),
+                'regular_columns_count': len(regular_columns)
+            })
+            
+    except Exception as e:
+        logger.error(f"Debug database structure error: {e}")
+        return jsonify({'error': f'Ошибка проверки структуры БД: {str(e)}'}), 500
+
+# === ЗАПУСК ПРИЛОЖЕНИЯ ===
+
 if __name__ == '__main__':
     logger.info("🏥 Запуск системы медкарт...")
     logger.info(f"🔒 TDE: {'Включен' if TDE_ENABLED else 'Отключен'}")
+    
+    # Проверяем готовность системы
+    try:
+        if db.test_connection():
+            logger.info("✅ База данных подключена")
+        else:
+            logger.error("❌ Проблемы с подключением к БД")
+    except Exception as e:
+        logger.error(f"❌ Ошибка проверки БД: {e}")
+    
+    # Проверяем TDE если включен
+    if TDE_ENABLED and tde_manager:
+        try:
+            info = tde_manager.get_encryption_info()
+            logger.info(f"🔐 TDE инициализирован: {info['algorithm']}")
+        except Exception as e:
+            logger.error(f"⚠️ Проблемы с TDE: {e}")
+    
+    logger.info("🚀 Сервер запускается на http://localhost:8000")
+    logger.info("📖 API документация: http://localhost:8000/api")
+    
     app.run(host='0.0.0.0', port=8000, debug=True)
