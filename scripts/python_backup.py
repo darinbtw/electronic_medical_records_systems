@@ -117,5 +117,4 @@ def python_backup():
         return False
 
 if __name__ == "__main__":
-    # УБРАЛИ input() - теперь скрипт завершается сразу
     python_backup()
