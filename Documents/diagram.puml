@@ -1,0 +1,45 @@
+@startuml DFD_Level_0
+!define RECTANGLE class
+!define EXTERNAL entity
+!define PROCESS circle
+
+skinparam entity {
+  BackgroundColor LightBlue
+  BorderColor Navy
+}
+
+skinparam circle {
+  BackgroundColor LightGreen
+  BorderColor DarkGreen
+}
+
+EXTERNAL "Пациент" as patient
+EXTERNAL "Врач" as doctor  
+EXTERNAL "Главврач" as chief
+EXTERNAL "Регистратор" as registrar
+EXTERNAL "Администратор БД" as admin
+
+PROCESS "Система\nэлектронных\nмедицинских\nкарт" as system
+
+patient --> system : "Личные данные\nЖалобы"
+system --> patient : "Расписание приемов\nРезультаты"
+
+doctor --> system : "Данные осмотра\nДиагноз\nНазначения"
+system --> doctor : "История болезни\nИнформация о пациенте"
+
+chief --> system : "Запросы отчетности"
+system --> chief : "Статистика\nОтчеты"
+
+registrar --> system : "Регистрация пациентов\nЗапись на прием"
+system --> registrar : "Расписание\nИнформация о пациентах"
+
+admin --> system : "Настройки\nРезервные копии"
+system --> admin : "Логи системы\nСтатус БД"
+
+note right of system
+  Центральная система обработки
+  медицинских данных с шифрованием
+  диагнозов и репликацией БД
+end note
+
+@enduml
