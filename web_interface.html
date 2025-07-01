@@ -1219,6 +1219,224 @@
             }
         }
 
+        // Appointments
+        async function loadAppointments(page = 1, perPage = 20) {
+            const container = document.getElementById('appointments-list-container');
+            container.innerHTML = '<div class="loading">Загрузка приёмов...</div>';
+
+            try {
+                const response = await apiRequest(`/api/appointments?page=${page}&per_page=${perPage}`);
+                renderAppointmentsList(response, container);
+                currentPage.appointments = page;
+                
+                // Также загружаем списки пациентов и врачей для формы
+                await loadSelectOptions();
+            } catch (error) {
+                container.innerHTML = `<div class="alert error">Ошибка загрузки: ${error.message}</div>`;
+            }
+        }
+
+        function renderAppointmentsList(response, container) {
+            if (!response.appointments || response.appointments.length === 0) {
+                container.innerHTML = '<div class="empty-state">Приёмы не найдены</div>';
+                return;
+            }
+
+            let html = `
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Пациент</th>
+                                <th>Врач</th>
+                                <th>Специализация</th>
+                                <th>Дата и время</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            response.appointments.forEach(appointment => {
+                let statusBadge = '';
+                switch(appointment.status) {
+                    case 'запланирован':
+                        statusBadge = '<span class="badge badge-warning">Запланирован</span>';
+                        break;
+                    case 'завершен':
+                        statusBadge = '<span class="badge badge-success">Завершён</span>';
+                        break;
+                    case 'отменен':
+                        statusBadge = '<span class="badge badge-danger">Отменён</span>';
+                        break;
+                    default:
+                        statusBadge = `<span class="badge">${appointment.status}</span>`;
+                }
+
+                html += `
+                    <tr>
+                        <td>${appointment.id}</td>
+                        <td><strong>${appointment.patient_name}</strong></td>
+                        <td>${appointment.doctor_name}</td>
+                        <td>${appointment.specialization}</td>
+                        <td>${appointment.appointment_date}</td>
+                        <td>${statusBadge}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // Add pagination if needed
+            if (response.pagination && response.pagination.pages > 1) {
+                html += renderPagination(response.pagination, 'loadAppointments');
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function filterAppointments() {
+            const status = document.getElementById('appointment-status-filter').value;
+            const container = document.getElementById('appointments-list-container');
+            container.innerHTML = '<div class="loading">Фильтрация приёмов...</div>';
+
+            try {
+                let url = '/api/appointments?page=1&per_page=20';
+                if (status) {
+                    url += `&status=${status}`;
+                }
+                
+                const response = await apiRequest(url);
+                renderAppointmentsList(response, container);
+            } catch (error) {
+                container.innerHTML = `<div class="alert error">Ошибка фильтрации: ${error.message}</div>`;
+            }
+        }
+
+        // Medical Records
+        async function loadMedicalRecords(page = 1, perPage = 20) {
+            const container = document.getElementById('medical-records-list-container');
+            container.innerHTML = '<div class="loading">Загрузка медкарт...</div>';
+
+            try {
+                const response = await apiRequest(`/api/medical-records?page=${page}&per_page=${perPage}`);
+                renderMedicalRecordsList(response, container);
+                currentPage.records = page;
+                
+                // Загружаем также список завершённых приёмов для формы
+                await loadCompletedAppointments();
+            } catch (error) {
+                container.innerHTML = `<div class="alert error">Ошибка загрузки: ${error.message}</div>`;
+            }
+        }
+
+        function renderMedicalRecordsList(response, container) {
+            if (!response.records || response.records.length === 0) {
+                container.innerHTML = '<div class="empty-state">Медицинские записи не найдены</div>';
+                return;
+            }
+
+            let html = `
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Пациент</th>
+                                <th>Врач</th>
+                                <th>Дата приёма</th>
+                                <th>Диагноз</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            response.records.forEach(record => {
+                html += `
+                    <tr>
+                        <td>${record.id}</td>
+                        <td><strong>${record.patient_name}</strong></td>
+                        <td>${record.doctor_name}</td>
+                        <td>${record.appointment_date}</td>
+                        <td>${record.diagnosis || '<em>Зашифрован</em>'}</td>
+                        <td>
+                            <button class="btn btn-outline btn-sm" onclick="viewMedicalRecord(${record.id})">
+                                👁️ Просмотр
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // Add pagination if needed
+            if (response.pagination && response.pagination.pages > 1) {
+                html += renderPagination(response.pagination, 'loadMedicalRecords');
+            }
+
+            container.innerHTML = html;
+        }
+
+        async function viewMedicalRecord(recordId) {
+            try {
+                const record = await apiRequest(`/api/medical-records/${recordId}`);
+                
+                let prescriptionsText = '';
+                if (record.prescriptions && record.prescriptions.length > 0) {
+                    prescriptionsText = '\n\nНазначения:\n';
+                    record.prescriptions.forEach((p, i) => {
+                        prescriptionsText += `${i + 1}. ${p.medication_name} - ${p.dosage || '-'}, ${p.frequency || '-'}, ${p.duration || '-'}\n`;
+                    });
+                }
+
+                const details = `
+Медицинская карта #${record.id}
+
+Пациент: ${record.patient_name}
+Врач: ${record.doctor_name}
+Дата приёма: ${record.appointment_date}
+
+Жалобы:
+${record.complaints || 'Не указаны'}
+
+Результаты осмотра:
+${record.examination_results || 'Не указаны'}
+
+Диагноз:
+${record.diagnosis || 'Ошибка расшифровки'}
+${prescriptionsText}
+                `.trim();
+
+                alert(details);
+            } catch (error) {
+                showAlert('Ошибка загрузки медкарты: ' + error.message, 'error');
+            }
+        }
+
+        // Load statistics
+        async function loadStatistics() {
+            const container = document.getElementById('statistics-container');
+            container.innerHTML = '<div class="loading">Загрузка статистики...</div>';
+
+            try {
+                const stats = await apiRequest('/api/statistics');
+                renderStatistics(stats, container);
+            } catch (error) {
+                container.innerHTML = `<div class="alert error">Ошибка загрузки статистики: ${error.message}</div>`;
+            }
+        }
+
         function renderSearchResults(patients, container) {
             let html = `
                 <div style="padding: 1rem; background: #e3f2fd; border-radius: 8px; margin-bottom: 1rem;">
