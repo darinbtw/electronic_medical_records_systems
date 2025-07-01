@@ -9,7 +9,7 @@ DROP TABLE IF EXISTS medical_records CASCADE;
 DROP TABLE IF EXISTS appointments CASCADE;
 DROP TABLE IF EXISTS doctors CASCADE;
 DROP TABLE IF EXISTS patients CASCADE;
-DROP TABLE IF EXISTS patient_audit CASCADE;
+DROP TABLE IF EXISTS patients_audit CASCADE;
 
 -- Удаляем функции и триггеры
 DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;

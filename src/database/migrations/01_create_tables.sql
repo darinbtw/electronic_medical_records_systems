@@ -6,7 +6,7 @@ CREATE TABLE patients (
     middle_name VARCHAR(100),
     birth_date DATE NOT NULL,
     gender CHAR(1) CHECK (gender IN ('M', 'F')),
-    phone VARCHAR(20),
+    phone VARCHAR(25),
     email VARCHAR(100) UNIQUE,
     address TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
